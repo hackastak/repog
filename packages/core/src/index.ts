@@ -34,6 +34,17 @@ export * from './github/auth.js';
 // Gemini Auth
 export * from './gemini/auth.js';
 
+// Gemini Embeddings
+export {
+  embedChunks,
+  embedQuery,
+  getEmbeddingModel,
+  getEmbeddingDimensions,
+  type EmbeddingResult,
+  type EmbeddingError,
+  type BatchEmbeddingResult,
+} from './gemini/embeddings.js';
+
 // Legacy Auth (re-exports for backwards compatibility)
 // Note: some functions have same names as config module but different signatures
 export {
@@ -64,6 +75,10 @@ export {
   generateEmbedding,
   getPendingEmbedCount,
   deleteEmbeddings,
+  runEmbedPipeline,
+  hasRepos,
+  type EmbedPipelineOptions,
+  type EmbedProgress,
 } from './embed/index.js';
 
 // Search

@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS repos (
   synced_at        TEXT NOT NULL,
   embedded_at      TEXT,
   pushed_at_hash   TEXT,
+  embedded_hash    TEXT,
   created_at       TEXT NOT NULL DEFAULT (datetime('now'))
 );
 `;
@@ -43,9 +44,9 @@ CREATE TABLE IF NOT EXISTS chunks (
 );
 `;
 
-export const CREATE_EMBEDDINGS_TABLE = `
-CREATE VIRTUAL TABLE IF NOT EXISTS embeddings USING vec0(
-  chunk_id  INTEGER PRIMARY KEY,
+export const CREATE_CHUNK_EMBEDDINGS_TABLE = `
+CREATE VIRTUAL TABLE IF NOT EXISTS chunk_embeddings USING vec0(
+  chunk_id INTEGER PRIMARY KEY,
   embedding FLOAT[768]
 );
 `;
@@ -149,5 +150,6 @@ export const ALL_SCHEMA_STATEMENTS = [
 /**
  * Vector table schema - requires sqlite-vec extension.
  * This is separate because it may fail if the extension isn't loaded.
+ * Note: Virtual tables cannot have indexes - sqlite-vec manages its own internal indexing.
  */
-export const VECTOR_SCHEMA_STATEMENTS = [CREATE_EMBEDDINGS_TABLE];
+export const VECTOR_SCHEMA_STATEMENTS = [CREATE_CHUNK_EMBEDDINGS_TABLE];

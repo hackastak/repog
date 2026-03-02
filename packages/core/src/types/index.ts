@@ -28,6 +28,7 @@ export interface Repo {
   synced_at: string;
   embedded_at: string | null;
   pushed_at_hash: string | null;
+  embedded_hash: string | null;
   created_at: string;
 }
 

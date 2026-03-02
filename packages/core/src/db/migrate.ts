@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3';
+import * as sqliteVec from 'sqlite-vec';
 import { ALL_SCHEMA_STATEMENTS, VECTOR_SCHEMA_STATEMENTS } from './schema.js';
 
 /**
@@ -8,23 +9,25 @@ import { ALL_SCHEMA_STATEMENTS, VECTOR_SCHEMA_STATEMENTS } from './schema.js';
  * @param db - The better-sqlite3 database instance
  */
 export function migrate(db: Database.Database): void {
+  // Load sqlite-vec extension first
+  sqliteVec.load(db);
+
   // Run all standard schema statements in a transaction
   db.transaction(() => {
     for (const statement of ALL_SCHEMA_STATEMENTS) {
       db.exec(statement);
     }
-  })();
 
-  // Try to create vector table (may fail if sqlite-vec extension not loaded)
-  try {
+    // Run vector schema statements (sqlite-vec extension is now loaded)
     for (const statement of VECTOR_SCHEMA_STATEMENTS) {
       db.exec(statement);
     }
-  } catch {
-    // Vector extension not available - this is expected on first run
-    // The extension will be loaded when needed
-    console.warn('sqlite-vec extension not loaded, vector table creation deferred');
-  }
+  })();
 
-  console.log('Database schema ready');
+  // Add embedded_hash column if it doesn't exist (for existing databases)
+  try {
+    db.exec('ALTER TABLE repos ADD COLUMN embedded_hash TEXT');
+  } catch {
+    // Column already exists, ignore
+  }
 }

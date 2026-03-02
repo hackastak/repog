@@ -7,6 +7,7 @@ let currentDbPath: string | null = null;
 /**
  * Get or create a database connection singleton.
  * Runs migrations on first connection.
+ * Loads sqlite-vec extension automatically.
  *
  * @param dbPath - Path to the SQLite database file
  * @returns The better-sqlite3 database instance
@@ -31,7 +32,7 @@ export function getDb(dbPath: string): Database.Database {
   // Enable foreign keys
   dbInstance.pragma('foreign_keys = ON');
 
-  // Run migrations
+  // Run migrations (also loads sqlite-vec extension)
   migrate(dbInstance);
 
   return dbInstance;

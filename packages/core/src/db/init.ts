@@ -1,7 +1,8 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
-import { ALL_SCHEMA_STATEMENTS } from './schema.js';
+import * as sqliteVec from 'sqlite-vec';
+import { ALL_SCHEMA_STATEMENTS, VECTOR_SCHEMA_STATEMENTS } from './schema.js';
 
 /**
  * Result of database initialization.
@@ -59,6 +60,9 @@ export function initDb(dbPath: string, options: InitDbOptions = {}): InitDbResul
     const db = new Database(dbPath);
 
     try {
+      // Load sqlite-vec extension (must be before any SQL execution)
+      sqliteVec.load(db);
+
       // Enable foreign keys
       db.pragma('foreign_keys = ON');
 
@@ -78,6 +82,17 @@ export function initDb(dbPath: string, options: InitDbOptions = {}): InitDbResul
           const tableMatch = statement.match(/CREATE TABLE IF NOT EXISTS (\w+)/i);
           if (tableMatch) {
             tablesCreated.push(tableMatch[1]);
+          }
+        }
+
+        // Run vector schema statements (sqlite-vec extension required)
+        for (const statement of VECTOR_SCHEMA_STATEMENTS) {
+          db.exec(statement);
+
+          // Extract virtual table name from CREATE VIRTUAL TABLE statements
+          const virtualTableMatch = statement.match(/CREATE VIRTUAL TABLE IF NOT EXISTS (\w+)/i);
+          if (virtualTableMatch) {
+            tablesCreated.push(virtualTableMatch[1]);
           }
         }
       })();
@@ -113,6 +128,8 @@ export function isWalEnabled(dbPath: string): boolean {
   try {
     const db = new Database(dbPath, { readonly: true });
     try {
+      // Load sqlite-vec in case the database has virtual tables
+      sqliteVec.load(db);
       const mode = db.pragma('journal_mode', { simple: true }) as string;
       return mode.toLowerCase() === 'wal';
     } finally {
@@ -133,6 +150,8 @@ export function getTableList(dbPath: string): string[] {
   try {
     const db = new Database(dbPath, { readonly: true });
     try {
+      // Load sqlite-vec in case the database has virtual tables
+      sqliteVec.load(db);
       const result = db
         .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
         .all() as { name: string }[];

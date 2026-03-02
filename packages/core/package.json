@@ -25,7 +25,8 @@
     "better-sqlite3": "^11.6.0",
     "conf": "^13.0.1",
     "crypto-js": "^4.2.0",
-    "octokit": "^4.0.2"
+    "octokit": "^4.0.2",
+    "sqlite-vec": "^0.1.6"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.11",

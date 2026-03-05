@@ -1,7 +1,7 @@
 import { loadConfig } from '../config/config.js';
 import { getDb } from '../db/index.js';
 import { embedChunks } from '../gemini/embeddings.js';
-import type { Chunk, Repo } from '../types/index.js';
+import type { Repo } from '../types/index.js';
 
 /**
  * Batch size for embedding requests.

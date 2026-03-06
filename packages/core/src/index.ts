@@ -45,6 +45,16 @@ export {
   type BatchEmbeddingResult,
 } from './gemini/embeddings.js';
 
+// Gemini LLM
+export {
+  callLLM,
+  streamLLM,
+  isLLMError,
+  type LLMResult,
+  type LLMError,
+  type OnChunkCallback,
+} from './gemini/llm.js';
+
 // Legacy Auth (re-exports for backwards compatibility)
 // Note: some functions have same names as config module but different signatures
 export {
@@ -102,3 +112,38 @@ export {
   generateResponse,
   getRepoForContext,
 } from './rag/index.js';
+
+// Recommend
+export {
+  recommendRepos,
+  buildRecommendPrompt,
+  type RecommendOptions,
+  type Recommendation,
+  type RecommendResult,
+} from './recommend/index.js';
+
+// Ask (Q&A)
+export {
+  askQuestion,
+  buildAskPrompt,
+  type AskOptions,
+  type SourceAttribution,
+  type AskResult,
+} from './ask/index.js';
+
+// Summarize
+export {
+  summarizeRepo,
+  buildSummarizePrompt,
+  type SummarizeOptions,
+  type SummarizeResult,
+} from './summarize/index.js';
+
+// Utils
+export {
+  wrapText,
+  formatStars,
+  formatSimilarity,
+  truncateText,
+  type WrapTextOptions,
+} from './utils/index.js';

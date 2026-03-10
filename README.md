@@ -1,5 +1,7 @@
 # RepoG
 
+![CI](https://github.com/hackastak/RepoG/actions/workflows/ci.yml/badge.svg)
+
 AI-powered knowledge base for your GitHub repositories.
 
 ## Overview

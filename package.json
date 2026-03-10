@@ -9,6 +9,8 @@
     "dev": "pnpm -r dev",
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
+    "test:ci": "pnpm lint && pnpm typecheck && pnpm --filter @repog/core test:coverage",
+    "typecheck": "pnpm -r exec tsc --noEmit",
     "clean": "pnpm -r clean"
   },
   "pnpm": {

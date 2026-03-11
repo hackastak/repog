@@ -34,7 +34,9 @@ jobs:
         run: pnpm install
 
       - name: Rebuild native dependencies
-        run: pnpm rebuild better-sqlite3
+        run: |
+          pnpm rebuild better-sqlite3
+          pnpm rebuild keytar
 
       - name: Lint
         run: pnpm lint

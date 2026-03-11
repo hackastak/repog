@@ -9,6 +9,7 @@ import { isConfigured, runEmbedPipeline, hasRepos, type EmbedProgress } from '@r
 interface EmbedOptions {
   includeFileTree?: boolean;
   verbose?: boolean;
+  batchSize?: number;
 }
 
 /**
@@ -19,9 +20,17 @@ async function runDefaultMode(options: EmbedOptions): Promise<void> {
 
   let lastProgress: EmbedProgress | null = null;
 
+  // Validate and warn about batch size
+  let batchSize = options.batchSize;
+  if (batchSize !== undefined && batchSize > 100) {
+    console.log(chalk.yellow(`Warning: Batch size ${batchSize} exceeds maximum, capping at 100`));
+    batchSize = 100;
+  }
+
   try {
     for await (const progress of runEmbedPipeline({
       includeFileTree: options.includeFileTree ?? false,
+      batchSize,
     })) {
       lastProgress = progress;
 
@@ -55,9 +64,17 @@ async function runVerboseMode(options: EmbedOptions): Promise<void> {
 
   let lastProgress: EmbedProgress | null = null;
 
+  // Validate and warn about batch size
+  let batchSize = options.batchSize;
+  if (batchSize !== undefined && batchSize > 100) {
+    console.log(chalk.yellow(`Warning: Batch size ${batchSize} exceeds maximum, capping at 100`));
+    batchSize = 100;
+  }
+
   try {
     for await (const progress of runEmbedPipeline({
       includeFileTree: options.includeFileTree ?? false,
+      batchSize,
     })) {
       lastProgress = progress;
 
@@ -146,6 +163,13 @@ export function register(program: Command): void {
     .description('Generate embeddings for repository content')
     .option('--include-file-tree', 'Include file tree chunks in embeddings', false)
     .option('-v, --verbose', 'Show detailed progress', false)
+    .option('--batch-size <number>', 'Batch size for embedding requests (default: 20, max: 100)', (value) => {
+      const parsed = parseInt(value, 10);
+      if (isNaN(parsed) || parsed < 1) {
+        throw new Error('Batch size must be a positive integer');
+      }
+      return parsed;
+    })
     .action(async (options: EmbedOptions) => {
       await runEmbed(options);
     });

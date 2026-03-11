@@ -206,3 +206,109 @@ describe('getTableList', () => {
     expect(getTableList('/nonexistent/path/db.sqlite')).toEqual([]);
   });
 });
+
+describe('indexes', () => {
+  let testDbPath: string;
+
+  beforeEach(() => {
+    fs.mkdirSync(TEST_DIR, { recursive: true });
+    testDbPath = path.join(TEST_DIR, 'indexes.db');
+  });
+
+  afterEach(() => {
+    try {
+      fs.rmSync(TEST_DIR, { recursive: true, force: true });
+    } catch {
+      // Ignore cleanup errors
+    }
+  });
+
+  it('creates all required indexes', () => {
+    initDb(testDbPath);
+
+    const db = new Database(testDbPath, { readonly: true });
+    const indexes = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%'")
+      .all() as { name: string }[];
+    db.close();
+
+    const indexNames = indexes.map((i) => i.name);
+
+    // Repos indexes
+    expect(indexNames).toContain('idx_repos_github_id');
+    expect(indexNames).toContain('idx_repos_full_name');
+    expect(indexNames).toContain('idx_repos_owner');
+    expect(indexNames).toContain('idx_repos_primary_language');
+    expect(indexNames).toContain('idx_repos_is_starred');
+    expect(indexNames).toContain('idx_repos_is_owned');
+    expect(indexNames).toContain('idx_repos_pushed_at_hash');
+    expect(indexNames).toContain('idx_repos_embedded_hash');
+    expect(indexNames).toContain('idx_repos_embed_status');
+
+    // Chunks indexes
+    expect(indexNames).toContain('idx_chunks_repo_id');
+    expect(indexNames).toContain('idx_chunks_chunk_type');
+
+    // Sync state indexes
+    expect(indexNames).toContain('idx_sync_state_status');
+    expect(indexNames).toContain('idx_sync_state_started_at');
+
+    // Query log indexes
+    expect(indexNames).toContain('idx_query_log_query_type');
+    expect(indexNames).toContain('idx_query_log_created_at');
+  });
+});
+
+describe('pragmas', () => {
+  let testDbPath: string;
+
+  beforeEach(() => {
+    fs.mkdirSync(TEST_DIR, { recursive: true });
+    testDbPath = path.join(TEST_DIR, 'pragmas.db');
+  });
+
+  afterEach(() => {
+    try {
+      fs.rmSync(TEST_DIR, { recursive: true, force: true });
+    } catch {
+      // Ignore cleanup errors
+    }
+  });
+
+  // Note: Most pragmas are session-specific and don't persist.
+  // We verify the WAL mode which DOES persist, and verify that
+  // initDb successfully completes which means pragmas were set.
+  // The actual pragma values are tested by verifying initDb doesn't fail.
+
+  it('sets WAL mode which persists across connections', () => {
+    initDb(testDbPath);
+
+    const db = new Database(testDbPath, { readonly: true });
+    const mode = db.pragma('journal_mode', { simple: true }) as string;
+    db.close();
+
+    expect(mode.toLowerCase()).toBe('wal');
+  });
+
+  it('sets synchronous to NORMAL (persists with WAL)', () => {
+    initDb(testDbPath);
+
+    // synchronous pragma persists when WAL mode is used
+    const db = new Database(testDbPath, { readonly: true });
+    const sync = db.pragma('synchronous', { simple: true });
+    db.close();
+
+    // NORMAL = 1
+    expect(sync).toBe(1);
+  });
+
+  it('successfully applies all pragmas during init (verified by successful completion)', () => {
+    // This test verifies that initDb successfully runs all pragma commands
+    // Session-specific pragmas (cache_size, temp_store, mmap_size) are set
+    // during initDb but don't persist to new connections
+    const result = initDb(testDbPath);
+
+    expect(result.success).toBe(true);
+    expect(result.walEnabled).toBe(true);
+  });
+});

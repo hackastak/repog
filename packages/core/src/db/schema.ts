@@ -122,6 +122,25 @@ export const CREATE_QUERY_LOG_CREATED_AT_INDEX = `
 CREATE INDEX IF NOT EXISTS idx_query_log_created_at ON query_log(created_at);
 `;
 
+// Index for embed pipeline - queries repos by pushed_at_hash vs embedded_hash
+export const CREATE_REPOS_PUSHED_AT_HASH_INDEX = `
+CREATE INDEX IF NOT EXISTS idx_repos_pushed_at_hash ON repos(pushed_at_hash);
+`;
+
+export const CREATE_REPOS_EMBEDDED_HASH_INDEX = `
+CREATE INDEX IF NOT EXISTS idx_repos_embedded_hash ON repos(embedded_hash);
+`;
+
+// Composite index for embed pipeline - used to find repos needing embedding
+export const CREATE_REPOS_EMBED_STATUS_INDEX = `
+CREATE INDEX IF NOT EXISTS idx_repos_embed_status ON repos(pushed_at_hash, embedded_hash);
+`;
+
+// Index for sync state ordering
+export const CREATE_SYNC_STATE_STARTED_AT_INDEX = `
+CREATE INDEX IF NOT EXISTS idx_sync_state_started_at ON sync_state(started_at);
+`;
+
 /**
  * All schema statements in order of execution.
  */
@@ -137,11 +156,15 @@ export const ALL_SCHEMA_STATEMENTS = [
   CREATE_REPOS_LANGUAGE_INDEX,
   CREATE_REPOS_STARRED_INDEX,
   CREATE_REPOS_OWNED_INDEX,
+  CREATE_REPOS_PUSHED_AT_HASH_INDEX,
+  CREATE_REPOS_EMBEDDED_HASH_INDEX,
+  CREATE_REPOS_EMBED_STATUS_INDEX,
   // Indexes for chunks
   CREATE_CHUNKS_REPO_ID_INDEX,
   CREATE_CHUNKS_TYPE_INDEX,
   // Indexes for sync_state
   CREATE_SYNC_STATE_STATUS_INDEX,
+  CREATE_SYNC_STATE_STARTED_AT_INDEX,
   // Indexes for query_log
   CREATE_QUERY_LOG_TYPE_INDEX,
   CREATE_QUERY_LOG_CREATED_AT_INDEX,

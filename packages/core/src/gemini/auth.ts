@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { redactSensitive } from '../utils/format.js';
 
 /**
  * Result of Gemini API key validation.
@@ -78,7 +79,7 @@ export async function validateGeminiKey(apiKey: string): Promise<GeminiAuthResul
 
       return {
         valid: false,
-        error: `Failed to validate API key: ${error.message}`,
+        error: `Failed to validate API key: ${redactSensitive(error.message)}`,
       };
     }
 

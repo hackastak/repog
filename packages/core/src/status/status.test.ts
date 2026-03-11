@@ -3,6 +3,16 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import Database from 'better-sqlite3';
+
+// Mock keytar before importing modules that use it
+vi.mock('keytar', () => ({
+  default: {
+    setPassword: vi.fn().mockResolvedValue(undefined),
+    getPassword: vi.fn().mockResolvedValue(null),
+    deletePassword: vi.fn().mockResolvedValue(true),
+  },
+}));
+
 import { getStatus, NotConfiguredError } from './status.js';
 import * as configModule from '../config/config.js';
 import * as clientModule from '../github/client.js';

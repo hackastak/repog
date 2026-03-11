@@ -5,6 +5,7 @@ import {
   formatStars,
   formatSimilarity,
   truncateText,
+  redactSensitive,
 } from './format.js';
 
 describe('formatRelativeTime', () => {
@@ -214,5 +215,79 @@ describe('truncateText', () => {
 
   it('handles empty string', () => {
     expect(truncateText('', 10)).toBe('');
+  });
+});
+
+describe('redactSensitive', () => {
+  describe('GitHub fine-grained PATs', () => {
+    it('redacts fine-grained PATs (github_pat_)', () => {
+      const str = 'Error with token github_pat_11ABCDEFGH0123456789_abcdefghijklmnopqrstuvwxyzABCDEFGH';
+      const result = redactSensitive(str);
+
+      expect(result).toContain('[REDACTED]');
+      expect(result).not.toContain('github_pat_');
+    });
+
+    it('redacts multiple fine-grained PATs', () => {
+      const str = 'Token1: github_pat_AAAAAAAAAAAAAAAAAAAAAA and Token2: github_pat_BBBBBBBBBBBBBBBBBBBBBB';
+      const result = redactSensitive(str);
+
+      expect(result.match(/\[REDACTED\]/g)?.length).toBe(2);
+    });
+  });
+
+  describe('GitHub classic PATs', () => {
+    it('redacts classic PATs (ghp_)', () => {
+      const str = 'Using token ghp_1234567890abcdefghijklmnopqrstuvwxyzAB';
+      const result = redactSensitive(str);
+
+      expect(result).toContain('[REDACTED]');
+      expect(result).not.toContain('ghp_');
+    });
+  });
+
+  describe('Gemini API keys', () => {
+    it('redacts Gemini API keys (AIza)', () => {
+      const str = 'API key: AIzaSyC1234567890abcdefghijklmnopqrstuvwx';
+      const result = redactSensitive(str);
+
+      expect(result).toContain('[REDACTED]');
+      expect(result).not.toContain('AIza');
+    });
+  });
+
+  describe('mixed content', () => {
+    it('redacts multiple different token types', () => {
+      // Use realistic token lengths: github_pat_ + 22 chars, AIza + 35 chars
+      const str = 'GitHub: github_pat_ABCDEFGHIJKLMNOPQRSTUV and Gemini: AIzaSyC12345678901234567890123456789012';
+      const result = redactSensitive(str);
+
+      expect(result.match(/\[REDACTED\]/g)?.length).toBe(2);
+      expect(result).not.toContain('github_pat_');
+      expect(result).not.toContain('AIza');
+    });
+
+    it('preserves non-sensitive content', () => {
+      const str = 'Error: connection failed to github.com with status 401';
+      const result = redactSensitive(str);
+
+      expect(result).toBe(str);
+    });
+  });
+
+  describe('edge cases', () => {
+    it('handles empty string', () => {
+      expect(redactSensitive('')).toBe('');
+    });
+
+    it('handles string without sensitive data', () => {
+      const str = 'Just a normal error message';
+      expect(redactSensitive(str)).toBe(str);
+    });
+
+    it('does not redact partial matches', () => {
+      const str = 'ghp_short'; // Too short to be a real token
+      expect(redactSensitive(str)).toBe(str);
+    });
   });
 });

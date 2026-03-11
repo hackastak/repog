@@ -8,5 +8,6 @@ export {
   formatSimilarity,
   truncateText,
   formatRelativeTime,
+  redactSensitive,
   type WrapTextOptions,
 } from './format.js';

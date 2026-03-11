@@ -10,6 +10,8 @@ import {
   validateGitHubToken,
   validateGeminiKey,
   getDefaultDbPath,
+  migrateFromEncryptedConfig,
+  checkConfigPermissions,
 } from '@repog/core';
 
 /**
@@ -57,6 +59,17 @@ async function runInit(options: InitOptions): Promise<void> {
 
   console.log(chalk.bold('\nRepoG Setup\n'));
 
+  // Attempt migration from legacy encrypted storage to keychain
+  try {
+    const migrated = await migrateFromEncryptedConfig();
+    if (migrated) {
+      console.log(chalk.green('  Migrated credentials from legacy storage to system keychain.'));
+      console.log('');
+    }
+  } catch {
+    // Migration failed silently - proceed with normal init
+  }
+
   // Check if already configured
   if (isConfigured() && !options.force) {
     const config = loadConfig();
@@ -80,8 +93,15 @@ async function runInit(options: InitOptions): Promise<void> {
   // Get GitHub token
   let githubToken = options.githubToken;
   if (!githubToken) {
-    console.log(chalk.dim('Create a GitHub PAT at: https://github.com/settings/tokens'));
-    console.log(chalk.dim('Required scope: repo\n'));
+    console.log(chalk.bold('RepoG requires a fine-grained GitHub Personal Access Token.\n'));
+    console.log(chalk.dim('Create one at: https://github.com/settings/personal-access-tokens/new\n'));
+    console.log(chalk.dim('Required settings:'));
+    console.log(chalk.dim('  Resource owner:     Your GitHub account'));
+    console.log(chalk.dim('  Repository access:  All repositories (or select specific repos)'));
+    console.log(chalk.dim('  Permissions:'));
+    console.log(chalk.dim('    Contents:         Read-only'));
+    console.log(chalk.dim('    Metadata:         Read-only'));
+    console.log('');
 
     githubToken = await password({
       message: 'GitHub Personal Access Token:',
@@ -104,7 +124,18 @@ async function runInit(options: InitOptions): Promise<void> {
     process.exit(1);
   }
 
-  spinner.succeed(chalk.green(`GitHub token valid (${githubResult.login})`));
+  // Handle token type messaging
+  if (githubResult.tokenType === 'classic') {
+    spinner.succeed(chalk.green(`GitHub token valid (${githubResult.login})`));
+    console.log('');
+    console.log(chalk.yellow('  Classic PAT detected. RepoG works best with a fine-grained PAT.'));
+    console.log(chalk.yellow('  Fine-grained PATs provide read-only access and are more secure.'));
+    console.log(chalk.yellow('  Consider regenerating your token at:'));
+    console.log(chalk.yellow('  https://github.com/settings/personal-access-tokens/new'));
+    console.log('');
+  } else {
+    spinner.succeed(chalk.green(`Fine-grained PAT validated - logged in as @${githubResult.login}`));
+  }
 
   // Get Gemini API key
   let geminiKey = options.geminiKey;
@@ -160,7 +191,7 @@ async function runInit(options: InitOptions): Promise<void> {
 
   // Save configuration
   spinner.start('Saving configuration...');
-  const saveResult = saveConfig({
+  const saveResult = await saveConfig({
     githubPat: githubToken,
     geminiKey: geminiKey,
     dbPath: dbPath,
@@ -172,6 +203,14 @@ async function runInit(options: InitOptions): Promise<void> {
   }
 
   spinner.succeed(chalk.green('Configuration saved'));
+
+  // Check config file permissions
+  const permCheck = checkConfigPermissions();
+  if (!permCheck.safe && permCheck.warning) {
+    console.log('');
+    console.log(chalk.yellow(`  Config file has loose permissions: ${permCheck.path}`));
+    console.log(chalk.yellow(`  Run: chmod 600 "${permCheck.path}"`));
+  }
 
   // Summary
   console.log('');

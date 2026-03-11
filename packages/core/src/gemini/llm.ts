@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { redactSensitive } from '../utils/format.js';
 
 /**
  * The LLM model to use for text generation.
@@ -120,7 +121,7 @@ export async function callLLM(
     };
   } catch (error) {
     const durationMs = performance.now() - startTime;
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorMessage = error instanceof Error ? redactSensitive(error.message) : 'Unknown error';
 
     return {
       error: errorMessage,
@@ -210,7 +211,7 @@ export async function streamLLM(
     };
   } catch (error) {
     const durationMs = performance.now() - startTime;
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorMessage = error instanceof Error ? redactSensitive(error.message) : 'Unknown error';
 
     return {
       error: errorMessage,

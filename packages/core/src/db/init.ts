@@ -68,9 +68,25 @@ export function initDb(dbPath: string, options: InitDbOptions = {}): InitDbResul
 
       // Enable WAL mode if requested
       if (enableWal) {
+        // WAL mode must be set first before other pragmas
         db.pragma('journal_mode = WAL');
         const mode = db.pragma('journal_mode', { simple: true }) as string;
         walEnabled = mode.toLowerCase() === 'wal';
+
+        // Set synchronous to NORMAL for better write performance while maintaining durability
+        // NORMAL is safe in WAL mode - data is still protected against corruption
+        db.pragma('synchronous = NORMAL');
+
+        // Increase cache size to 64MB for better read performance
+        // Negative value specifies size in KB (64MB = 64 * 1024 = 65536 KB)
+        db.pragma('cache_size = -64000');
+
+        // Store temp tables in memory for faster operations
+        db.pragma('temp_store = MEMORY');
+
+        // Enable memory-mapped I/O for up to 256MB for faster reads
+        // This allows SQLite to read data directly from OS page cache
+        db.pragma('mmap_size = 268435456');
       }
 
       // Run all schema statements in a transaction

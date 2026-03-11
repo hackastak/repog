@@ -22,48 +22,112 @@ describe('validateGitHubToken', () => {
     vi.clearAllMocks();
   });
 
-  describe('valid tokens', () => {
-    it('returns valid: true with correct login when API returns 200 with repo scope', async () => {
+  describe('fine-grained PATs', () => {
+    it('returns valid: true and tokenType: fine-grained when x-oauth-scopes header is absent', async () => {
       mockOctokit.mockImplementation(() => ({
         rest: {
           users: {
             getAuthenticated: vi.fn().mockResolvedValue({
               data: { login: 'testuser', id: 12345 },
-              headers: { 'x-oauth-scopes': 'repo, read:user' },
+              headers: {}, // No x-oauth-scopes header
+            }),
+          },
+          repos: {
+            listForAuthenticatedUser: vi.fn().mockResolvedValue({
+              data: [],
             }),
           },
         },
       }) as unknown as InstanceType<typeof Octokit>);
 
-      const result = await validateGitHubToken('ghp_validtoken123');
+      const result = await validateGitHubToken('github_pat_validtoken123');
 
       expect(result.valid).toBe(true);
       expect(result.login).toBe('testuser');
-      expect(result.scopes).toContain('repo');
-      expect(result.error).toBeUndefined();
+      expect(result.tokenType).toBe('fine-grained');
+      expect(result.error).toBeNull();
     });
+  });
 
-    it('accepts public_repo scope as valid', async () => {
+  describe('classic PATs', () => {
+    it('returns valid: true and tokenType: classic when x-oauth-scopes header is present', async () => {
       mockOctokit.mockImplementation(() => ({
         rest: {
           users: {
             getAuthenticated: vi.fn().mockResolvedValue({
-              data: { login: 'publicuser', id: 67890 },
-              headers: { 'x-oauth-scopes': 'public_repo, read:user' },
+              data: { login: 'classicuser', id: 67890 },
+              headers: { 'x-oauth-scopes': 'repo, read:user' },
+            }),
+          },
+          repos: {
+            listForAuthenticatedUser: vi.fn().mockResolvedValue({
+              data: [],
             }),
           },
         },
       }) as unknown as InstanceType<typeof Octokit>);
 
-      const result = await validateGitHubToken('ghp_publictoken123');
+      const result = await validateGitHubToken('ghp_classictoken123');
 
       expect(result.valid).toBe(true);
-      expect(result.login).toBe('publicuser');
+      expect(result.login).toBe('classicuser');
+      expect(result.tokenType).toBe('classic');
+      expect(result.error).toBeNull();
+    });
+  });
+
+  describe('permission errors', () => {
+    it('returns valid: false with permissions error when GET /user/repos returns 403', async () => {
+      const reposError = new Error('Resource not accessible by integration');
+      (reposError as Error & { status: number }).status = 403;
+
+      mockOctokit.mockImplementation(() => ({
+        rest: {
+          users: {
+            getAuthenticated: vi.fn().mockResolvedValue({
+              data: { login: 'limiteduser', id: 11111 },
+              headers: {}, // Fine-grained PAT
+            }),
+          },
+          repos: {
+            listForAuthenticatedUser: vi.fn().mockRejectedValue(reposError),
+          },
+        },
+      }) as unknown as InstanceType<typeof Octokit>);
+
+      const result = await validateGitHubToken('github_pat_limitedtoken');
+
+      expect(result.valid).toBe(false);
+      expect(result.login).toBe('limiteduser');
+      expect(result.tokenType).toBe('fine-grained');
+      expect(result.error).toContain('Contents: Read-only');
+    });
+
+    it('returns valid: false with permissions error when GET /user returns 403', async () => {
+      const userError = new Error('Resource not accessible by integration');
+      (userError as Error & { status: number }).status = 403;
+
+      mockOctokit.mockImplementation(() => ({
+        rest: {
+          users: {
+            getAuthenticated: vi.fn().mockRejectedValue(userError),
+          },
+          repos: {
+            listForAuthenticatedUser: vi.fn(),
+          },
+        },
+      }) as unknown as InstanceType<typeof Octokit>);
+
+      const result = await validateGitHubToken('github_pat_nometadata');
+
+      expect(result.valid).toBe(false);
+      expect(result.login).toBeNull();
+      expect(result.error).toContain('Metadata: Read-only');
     });
   });
 
   describe('invalid tokens', () => {
-    it('returns valid: false when API returns 401', async () => {
+    it('returns valid: false when GET /user returns 401', async () => {
       const error = new Error('Bad credentials');
       (error as Error & { status: number }).status = 401;
 
@@ -72,6 +136,9 @@ describe('validateGitHubToken', () => {
           users: {
             getAuthenticated: vi.fn().mockRejectedValue(error),
           },
+          repos: {
+            listForAuthenticatedUser: vi.fn(),
+          },
         },
       }) as unknown as InstanceType<typeof Octokit>);
 
@@ -79,7 +146,8 @@ describe('validateGitHubToken', () => {
 
       expect(result.valid).toBe(false);
       expect(result.error).toContain('Invalid token');
-      expect(result.login).toBeUndefined();
+      expect(result.login).toBeNull();
+      expect(result.tokenType).toBe('unknown');
     });
 
     it('returns valid: false when token is empty', async () => {
@@ -87,6 +155,8 @@ describe('validateGitHubToken', () => {
 
       expect(result.valid).toBe(false);
       expect(result.error).toBe('Token is empty');
+      expect(result.login).toBeNull();
+      expect(result.tokenType).toBe('unknown');
     });
 
     it('returns valid: false when token is whitespace only', async () => {
@@ -94,25 +164,8 @@ describe('validateGitHubToken', () => {
 
       expect(result.valid).toBe(false);
       expect(result.error).toBe('Token is empty');
-    });
-
-    it('returns valid: false when token lacks required scope', async () => {
-      mockOctokit.mockImplementation(() => ({
-        rest: {
-          users: {
-            getAuthenticated: vi.fn().mockResolvedValue({
-              data: { login: 'limiteduser', id: 11111 },
-              headers: { 'x-oauth-scopes': 'read:user, user:email' },
-            }),
-          },
-        },
-      }) as unknown as InstanceType<typeof Octokit>);
-
-      const result = await validateGitHubToken('ghp_limitedscopetoken');
-
-      expect(result.valid).toBe(false);
-      expect(result.login).toBe('limiteduser');
-      expect(result.error).toContain("missing required 'repo' scope");
+      expect(result.login).toBeNull();
+      expect(result.tokenType).toBe('unknown');
     });
   });
 
@@ -122,6 +175,9 @@ describe('validateGitHubToken', () => {
         rest: {
           users: {
             getAuthenticated: vi.fn().mockRejectedValue(new Error('Network connection failed')),
+          },
+          repos: {
+            listForAuthenticatedUser: vi.fn(),
           },
         },
       }) as unknown as InstanceType<typeof Octokit>);
@@ -139,6 +195,9 @@ describe('validateGitHubToken', () => {
           users: {
             getAuthenticated: vi.fn().mockRejectedValue(new Error('ETIMEDOUT')),
           },
+          repos: {
+            listForAuthenticatedUser: vi.fn(),
+          },
         },
       }) as unknown as InstanceType<typeof Octokit>);
 
@@ -149,25 +208,27 @@ describe('validateGitHubToken', () => {
     });
   });
 
-  describe('edge cases', () => {
-    it('handles missing x-oauth-scopes header', async () => {
+  describe('login parsing', () => {
+    it('correctly parses login from GET /user response body', async () => {
       mockOctokit.mockImplementation(() => ({
         rest: {
           users: {
             getAuthenticated: vi.fn().mockResolvedValue({
-              data: { login: 'noscopeuser', id: 22222 },
+              data: { login: 'my-github-username', id: 99999 },
               headers: {},
+            }),
+          },
+          repos: {
+            listForAuthenticatedUser: vi.fn().mockResolvedValue({
+              data: [],
             }),
           },
         },
       }) as unknown as InstanceType<typeof Octokit>);
 
-      const result = await validateGitHubToken('ghp_noscopestoken');
+      const result = await validateGitHubToken('github_pat_validtoken');
 
-      expect(result.valid).toBe(false);
-      expect(result.login).toBe('noscopeuser');
-      expect(result.scopes).toEqual([]);
-      expect(result.error).toContain("missing required 'repo' scope");
+      expect(result.login).toBe('my-github-username');
     });
   });
 });
@@ -177,7 +238,7 @@ describe('hasScope', () => {
     vi.clearAllMocks();
   });
 
-  it('returns true when token has the specified scope', async () => {
+  it('returns true when classic token has the specified scope', async () => {
     mockOctokit.mockImplementation(() => ({
       rest: {
         users: {
@@ -194,7 +255,7 @@ describe('hasScope', () => {
     expect(result).toBe(true);
   });
 
-  it('returns false when token lacks the specified scope', async () => {
+  it('returns false when classic token lacks the specified scope', async () => {
     mockOctokit.mockImplementation(() => ({
       rest: {
         users: {
@@ -207,6 +268,23 @@ describe('hasScope', () => {
     }) as unknown as InstanceType<typeof Octokit>);
 
     const result = await hasScope('ghp_token', 'admin:org');
+
+    expect(result).toBe(false);
+  });
+
+  it('returns false for fine-grained PATs (no scopes)', async () => {
+    mockOctokit.mockImplementation(() => ({
+      rest: {
+        users: {
+          getAuthenticated: vi.fn().mockResolvedValue({
+            data: { login: 'user', id: 1 },
+            headers: {}, // No x-oauth-scopes header
+          }),
+        },
+      },
+    }) as unknown as InstanceType<typeof Octokit>);
+
+    const result = await hasScope('github_pat_token', 'repo');
 
     expect(result).toBe(false);
   });

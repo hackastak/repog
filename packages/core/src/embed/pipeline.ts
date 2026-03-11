@@ -4,11 +4,16 @@ import { embedChunks } from '../gemini/embeddings.js';
 import type { Repo } from '../types/index.js';
 
 /**
- * Batch size for embedding requests.
+ * Default batch size for embedding requests.
  * Gemini API supports up to 100 embeddings per batch request,
  * but we use 20 for better error handling and progress updates.
  */
-const BATCH_SIZE = 20;
+const DEFAULT_BATCH_SIZE = 20;
+
+/**
+ * Maximum allowed batch size.
+ */
+const MAX_BATCH_SIZE = 100;
 
 /**
  * Options for the embedding pipeline.
@@ -16,6 +21,8 @@ const BATCH_SIZE = 20;
 export interface EmbedPipelineOptions {
   /** If false, skip chunks with chunk_type = 'file_tree' */
   includeFileTree: boolean;
+  /** Batch size for embedding requests (default: 20, max: 100) */
+  batchSize?: number;
 }
 
 /**
@@ -66,6 +73,15 @@ export async function* runEmbedPipeline(
   let chunksEmbedded = 0;
   let chunksSkipped = 0;
   let chunksErrored = 0;
+
+  // Determine batch size with validation
+  let batchSize = options.batchSize ?? DEFAULT_BATCH_SIZE;
+  if (batchSize > MAX_BATCH_SIZE) {
+    batchSize = MAX_BATCH_SIZE;
+  }
+  if (batchSize < 1) {
+    batchSize = DEFAULT_BATCH_SIZE;
+  }
 
   try {
     // Load config and get API key
@@ -178,9 +194,9 @@ export async function* runEmbedPipeline(
 
     // Split chunks into batches
     const batches: ChunkWithContent[][] = [];
-    for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
+    for (let i = 0; i < chunks.length; i += batchSize) {
       batches.push(
-        chunks.slice(i, i + BATCH_SIZE).map((c) => ({
+        chunks.slice(i, i + batchSize).map((c) => ({
           id: c.id,
           repoId: c.repo_id,
           content: c.content,

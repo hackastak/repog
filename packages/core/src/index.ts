@@ -12,15 +12,20 @@
 // Types
 export * from './types/index.js';
 
-// Config (encrypted credential storage)
+// Config (keychain credential storage)
 export {
   saveConfig,
   loadConfig,
+  loadConfigAsync,
   clearConfig,
   isConfigured,
+  isConfiguredAsync,
   getDefaultDbPath,
+  migrateFromEncryptedConfig,
+  checkConfigPermissions,
   type ConfigData,
   type SaveConfigResult,
+  type ConfigPermissionResult,
 } from './config/config.js';
 
 // Database
@@ -29,7 +34,19 @@ export * from './db/schema.js';
 export * from './db/init.js';
 
 // GitHub Auth
-export * from './github/auth.js';
+export {
+  validateGitHubToken,
+  hasScope,
+  getRequiredScopes,
+  type PatValidationResult,
+  type GitHubAuthResult,
+} from './github/auth.js';
+
+// GitHub Rate Limiter
+export { RateLimiter, githubRateLimiter } from './github/rateLimiter.js';
+
+// GitHub Client (RateLimitStats is exported from status module)
+export { getRateLimitInfo } from './github/client.js';
 
 // Gemini Auth
 export * from './gemini/auth.js';
@@ -146,6 +163,7 @@ export {
   formatSimilarity,
   truncateText,
   formatRelativeTime,
+  redactSensitive,
   type WrapTextOptions,
 } from './utils/index.js';
 

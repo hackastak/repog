@@ -3,6 +3,38 @@
  */
 
 /**
+ * Regex patterns for sensitive data that should be redacted.
+ * - github_pat_: Fine-grained GitHub PATs
+ * - ghp_: Classic GitHub PATs
+ * - AIza: Gemini API keys
+ */
+const SENSITIVE_PATTERNS = [
+  /github_pat_[A-Za-z0-9_]{20,}/g, // Fine-grained PATs
+  /ghp_[A-Za-z0-9]{36,}/g, // Classic PATs
+  /AIza[A-Za-z0-9_-]{35,}/g, // Gemini API keys
+];
+
+/**
+ * Redact sensitive information from a string.
+ *
+ * Detects and replaces GitHub PATs (fine-grained and classic) and
+ * Gemini API keys with [REDACTED] to prevent accidental exposure
+ * in logs or error messages.
+ *
+ * @param str - The string to redact sensitive data from
+ * @returns The string with sensitive data replaced by [REDACTED]
+ */
+export function redactSensitive(str: string): string {
+  let result = str;
+  for (const pattern of SENSITIVE_PATTERNS) {
+    // Reset lastIndex for global regex
+    pattern.lastIndex = 0;
+    result = result.replace(pattern, '[REDACTED]');
+  }
+  return result;
+}
+
+/**
  * Options for word wrapping text.
  */
 export interface WrapTextOptions {

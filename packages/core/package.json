@@ -27,6 +27,7 @@
     "better-sqlite3": "^12.6.2",
     "conf": "^13.0.1",
     "crypto-js": "^4.2.0",
+    "keytar": "^7.9.0",
     "octokit": "^4.0.2",
     "sqlite-vec": "^0.1.6"
   },

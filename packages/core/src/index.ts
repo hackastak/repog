@@ -48,6 +48,15 @@ export { RateLimiter, githubRateLimiter } from './github/rateLimiter.js';
 // GitHub Client (RateLimitStats is exported from status module)
 export { getRateLimitInfo } from './github/client.js';
 
+// GitHub Repos
+export type { GitHubRepo, FetchReposOptions } from './github/repos.js';
+export {
+  fetchOwnedRepos,
+  fetchStarredRepos,
+  fetchReadme,
+  fetchFileTree,
+} from './github/repos.js';
+
 // Gemini Auth
 export * from './gemini/auth.js';
 
@@ -84,15 +93,17 @@ export {
   // saveConfig and isConfigured are exported from config/config.js
 } from './auth/index.js';
 
-// Sync
+// Sync (legacy stubs)
 export {
   syncRepos,
   syncRepo,
   getSyncState,
-  fetchReadme,
-  fetchFileTree,
   resumeSync,
 } from './sync/index.js';
+
+// Sync / Ingestion
+export type { IngestOptions, IngestProgressEvent } from './sync/ingest.js';
+export { ingestRepos } from './sync/ingest.js';
 
 // Embed
 export {

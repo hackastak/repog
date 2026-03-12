@@ -9,9 +9,12 @@ let keytarModule: typeof import('keytar') | null = null;
 
 async function getKeytar(): Promise<typeof import('keytar')> {
   if (!keytarModule) {
-    keytarModule = await import('keytar');
+    const mod = await import('keytar');
+    // Handle CommonJS/ESM interop where the module might be on the default export
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    keytarModule = (mod as any).default || mod;
   }
-  return keytarModule;
+  return keytarModule!;
 }
 
 /**

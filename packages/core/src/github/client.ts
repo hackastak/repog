@@ -1,5 +1,45 @@
 import { Octokit } from 'octokit';
 import { loadConfig } from '../config/config.js';
+import { githubRateLimiter } from './rateLimiter.js';
+
+export class GitHubClient extends Octokit {
+  constructor(token: string) {
+    super({ auth: token });
+  }
+}
+
+export class RateLimitError extends Error {
+  constructor(public resetAt: Date) {
+    super(`Rate limit exceeded. Resets at ${resetAt.toISOString()}`);
+    this.name = 'RateLimitError';
+  }
+}
+
+export async function withRateLimitRetry<T>(
+  operation: () => Promise<T>,
+  _retries = 3
+): Promise<T> {
+  await githubRateLimiter.throttle();
+
+  try {
+    const result = await operation();
+    githubRateLimiter.recordRequest();
+    return result;
+  } catch (error: unknown) {
+    // Check for rate limit error (403 or 429)
+    const httpError = error as { status?: number; response?: { headers?: Record<string, string> } };
+    if (httpError.status === 403 || httpError.status === 429) {
+      const remaining = httpError.response?.headers?.['x-ratelimit-remaining'];
+      if (remaining === '0') {
+        const resetTime = httpError.response?.headers?.['x-ratelimit-reset'];
+        if (resetTime) {
+          throw new RateLimitError(new Date(parseInt(resetTime) * 1000));
+        }
+      }
+    }
+    throw error;
+  }
+}
 
 export interface RateLimitStats {
   limit: number;

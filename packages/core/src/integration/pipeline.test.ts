@@ -1,14 +1,13 @@
 /**
  * Integration tests for the sync → embed → search pipeline.
  *
- * Since sync is not yet implemented and sqlite-vec has limitations with
- * parameterized inserts, these tests:
- * 1. Manually seed the database with repos and chunks (simulating sync)
- * 2. Directly insert embeddings (simulating what embed pipeline would do)
- * 3. Test the search functionality end-to-end
+ * These tests cover:
+ * 1. The full pipeline from sync (ingestRepos) through embed to search
+ * 2. Embed pipeline behavior with the Gemini API
+ * 3. Search functionality with various filters
  *
- * The embed pipeline's behavior is tested separately to verify it calls
- * the Gemini API correctly.
+ * Some tests use manual DB seeding for focused embed/search testing,
+ * while sync-specific tests use the real ingestRepos function.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import os from 'os';
@@ -18,10 +17,12 @@ import { initDb } from '../db/init.js';
 import { getDb, closeDb } from '../db/index.js';
 import { runEmbedPipeline, type EmbedProgress } from '../embed/pipeline.js';
 import { searchRepos } from '../search/query.js';
+import { ingestRepos, type IngestProgressEvent } from '../sync/ingest.js';
 
 // Mock config module
 vi.mock('../config/config.js', () => ({
   loadConfig: vi.fn(),
+  loadConfigAsync: vi.fn(),
 }));
 
 // Mock Gemini embeddings
@@ -30,8 +31,22 @@ vi.mock('../gemini/embeddings.js', () => ({
   embedQuery: vi.fn(),
 }));
 
-import { loadConfig } from '../config/config.js';
+// Mock GitHub client for sync tests
+vi.mock('../github/client.js', () => ({
+  GitHubClient: vi.fn().mockImplementation(() => ({})),
+}));
+
+// Mock GitHub repos module for sync tests
+vi.mock('../github/repos.js', () => ({
+  fetchOwnedRepos: vi.fn(),
+  fetchStarredRepos: vi.fn(),
+  fetchReadme: vi.fn(),
+  fetchFileTree: vi.fn(),
+}));
+
+import { loadConfig, loadConfigAsync } from '../config/config.js';
 import { embedChunks, embedQuery } from '../gemini/embeddings.js';
+import { fetchOwnedRepos, fetchStarredRepos, fetchReadme, fetchFileTree } from '../github/repos.js';
 
 // Constants
 const EMBEDDING_DIMENSIONS = 768;
@@ -899,6 +914,132 @@ describe('Integration: Sync → Embed → Search Pipeline', () => {
       expect(results.queryEmbeddingMs).toBeGreaterThanOrEqual(0);
       expect(results.searchMs).toBeGreaterThanOrEqual(0);
       expect(results.totalConsidered).toBeGreaterThanOrEqual(0);
+    });
+  });
+
+  describe('Sync: Incremental Sync', () => {
+    // Helper to create a mock GitHub repo for sync tests
+    function createMockGitHubRepo(overrides: Record<string, unknown> = {}) {
+      return {
+        id: 123456,
+        node_id: 'R_123456',
+        name: 'test-repo',
+        full_name: 'testuser/test-repo',
+        description: 'A test repository',
+        private: false,
+        owner: { login: 'testuser', id: 1 },
+        html_url: 'https://github.com/testuser/test-repo',
+        clone_url: 'https://github.com/testuser/test-repo.git',
+        ssh_url: 'git@github.com:testuser/test-repo.git',
+        language: 'TypeScript',
+        stargazers_count: 100,
+        forks_count: 10,
+        open_issues_count: 5,
+        default_branch: 'main',
+        topics: ['typescript', 'testing'],
+        pushed_at: '2024-01-15T10:30:00Z',
+        created_at: '2023-01-01T00:00:00Z',
+        updated_at: '2024-01-15T10:30:00Z',
+        archived: false,
+        fork: false,
+        size: 1024,
+        ...overrides,
+      };
+    }
+
+    // Helper to create async generator from array
+    async function* asyncGeneratorFromArray<T>(items: T[]): AsyncGenerator<T> {
+      for (const item of items) {
+        yield item;
+      }
+    }
+
+    // Helper to collect ingest events
+    async function collectIngestEvents(
+      generator: AsyncGenerator<IngestProgressEvent>
+    ): Promise<IngestProgressEvent[]> {
+      const events: IngestProgressEvent[] = [];
+      for await (const event of generator) {
+        events.push(event);
+      }
+      return events;
+    }
+
+    it('incremental sync skips unchanged repos', async () => {
+      // Setup config mock for async usage
+      vi.mocked(loadConfigAsync).mockResolvedValue({
+        githubPat: 'ghp_test_token',
+        geminiKey: 'test-gemini-key',
+        dbPath,
+      });
+
+      // Create 3 mock repos with same pushed_at
+      const mockRepos = [
+        createMockGitHubRepo({ id: 18001, full_name: 'user/repo1', name: 'repo1', pushed_at: '2024-01-01T00:00:00Z' }),
+        createMockGitHubRepo({ id: 18002, full_name: 'user/repo2', name: 'repo2', pushed_at: '2024-01-01T00:00:00Z' }),
+        createMockGitHubRepo({ id: 18003, full_name: 'user/repo3', name: 'repo3', pushed_at: '2024-01-01T00:00:00Z' }),
+      ];
+
+      // First sync - all repos are new
+      vi.mocked(fetchOwnedRepos).mockImplementation(() => asyncGeneratorFromArray(mockRepos));
+      vi.mocked(fetchStarredRepos).mockImplementation(() => asyncGeneratorFromArray([]));
+      vi.mocked(fetchReadme).mockResolvedValue('# README content that is long enough to trigger file tree fetch at over 100 characters.');
+      vi.mocked(fetchFileTree).mockResolvedValue('README.md\nsrc/index.ts');
+
+      const firstRunEvents = await collectIngestEvents(
+        ingestRepos({
+          includeOwned: true,
+          includeStarred: false,
+          fullTree: false,
+          verbose: false,
+        })
+      );
+
+      // Verify first run created 3 new repos
+      const firstRunRepoEvents = firstRunEvents.filter((e) => e.type === 'repo');
+      expect(firstRunRepoEvents).toHaveLength(3);
+      expect(firstRunRepoEvents.every((e) => e.type === 'repo' && e.status === 'new')).toBe(true);
+
+      // Count chunks after first sync
+      const db = getDb(dbPath);
+      const chunkCountAfterFirst = db.prepare('SELECT COUNT(*) as count FROM chunks').get() as { count: number };
+
+      // Clear mocks for second run
+      vi.clearAllMocks();
+      vi.mocked(loadConfigAsync).mockResolvedValue({
+        githubPat: 'ghp_test_token',
+        geminiKey: 'test-gemini-key',
+        dbPath,
+      });
+
+      // Second sync with same repos (same pushed_at values)
+      vi.mocked(fetchOwnedRepos).mockImplementation(() => asyncGeneratorFromArray(mockRepos));
+      vi.mocked(fetchStarredRepos).mockImplementation(() => asyncGeneratorFromArray([]));
+
+      const secondRunEvents = await collectIngestEvents(
+        ingestRepos({
+          includeOwned: true,
+          includeStarred: false,
+          fullTree: false,
+          verbose: false,
+        })
+      );
+
+      // Verify second run skipped all 3 repos
+      const secondRunSkipEvents = secondRunEvents.filter((e) => e.type === 'skip');
+      expect(secondRunSkipEvents).toHaveLength(3);
+      expect(secondRunSkipEvents.every((e) => e.type === 'skip' && e.reason === 'unchanged')).toBe(true);
+
+      // Verify no new chunks were created
+      const chunkCountAfterSecond = db.prepare('SELECT COUNT(*) as count FROM chunks').get() as { count: number };
+      expect(chunkCountAfterSecond.count).toBe(chunkCountAfterFirst.count);
+
+      // Verify done event has correct counts
+      const doneEvent = secondRunEvents.find((e) => e.type === 'done');
+      expect(doneEvent).toBeDefined();
+      expect(doneEvent?.type === 'done' && doneEvent.total).toBe(0);
+      expect(doneEvent?.type === 'done' && doneEvent.skipped).toBe(3);
+      expect(doneEvent?.type === 'done' && doneEvent.errors).toBe(0);
     });
   });
 });

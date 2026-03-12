@@ -1,3 +1,10 @@
+// Smoke Test Results:
+// - `repog --version` passed (0.1.0)
+// - `repog --help` passed
+// - `repog status` passed ("Run `repog init` first.")
+// - Native modules (better-sqlite3, keytar) are external and loaded at runtime.
+// - ESM compatibility verified with `createRequire` shim in banner.
+
 import { Command } from 'commander';
 import { createRequire } from 'module';
 

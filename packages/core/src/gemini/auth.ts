@@ -15,9 +15,16 @@ export interface GeminiAuthResult {
 
 /**
  * The model to use for validation.
- * Using gemini-1.5-flash as it's widely available and fast.
+ * Using gemini-2.0-flash as it's the current standard.
  */
-const VALIDATION_MODEL = 'gemini-1.5-flash';
+const VALIDATION_MODEL = 'gemini-2.0-flash';
+
+/**
+ * Fallback models to try if the primary validation model is not found.
+ * This adds resilience against model deprecation or regional availability issues.
+ * Added gemini-3.0-flash as a potential future model.
+ */
+const FALLBACK_MODELS = ['gemini-1.5-flash', 'gemini-3.0-flash'];
 
 /**
  * Validate a Google Gemini API key.
@@ -36,58 +43,79 @@ export async function validateGeminiKey(apiKey: string): Promise<GeminiAuthResul
     };
   }
 
-  try {
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: VALIDATION_MODEL });
+  const modelsToTry = [VALIDATION_MODEL, ...FALLBACK_MODELS];
+  let lastError: Error | unknown;
 
-    // Make a minimal request to validate the key
-    // Using countTokens as it's fast and doesn't consume quota
-    await model.countTokens('test');
+  for (const modelName of modelsToTry) {
+    try {
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: modelName });
 
-    return {
-      valid: true,
-      model: VALIDATION_MODEL,
-    };
-  } catch (error) {
-    if (error instanceof Error) {
-      const message = error.message.toLowerCase();
-
-      // Check for authentication errors
-      if (message.includes('api key') || message.includes('invalid') || message.includes('401')) {
-        return {
-          valid: false,
-          error: 'Invalid API key',
-        };
-      }
-
-      // Check for quota/rate limit errors (key is valid but limited)
-      if (message.includes('quota') || message.includes('rate limit') || message.includes('429')) {
-        return {
-          valid: true,
-          model: VALIDATION_MODEL,
-          error: 'API key is valid but rate limited or quota exceeded',
-        };
-      }
-
-      // Check for permission errors
-      if (message.includes('permission') || message.includes('403')) {
-        return {
-          valid: false,
-          error: 'API key lacks required permissions',
-        };
-      }
+      // Make a minimal request to validate the key
+      // Using countTokens as it's fast and doesn't consume quota
+      await model.countTokens('test');
 
       return {
-        valid: false,
-        error: `Failed to validate API key: ${redactSensitive(error.message)}`,
+        valid: true,
+        model: modelName,
       };
-    }
+    } catch (error) {
+      lastError = error;
+      if (error instanceof Error) {
+        const message = error.message.toLowerCase();
 
+        // Check for authentication errors - fail immediately
+        if (message.includes('api key') || message.includes('invalid') || message.includes('401')) {
+          return {
+            valid: false,
+            error: 'Invalid API key',
+          };
+        }
+
+        // Check for permission errors - fail immediately
+        if (message.includes('permission') || message.includes('403')) {
+          return {
+            valid: false,
+            error: 'API key lacks required permissions',
+          };
+        }
+
+        // Check for quota/rate limit errors (key is valid but limited)
+        if (message.includes('quota') || message.includes('rate limit') || message.includes('429')) {
+          return {
+            valid: true,
+            model: modelName,
+            error: 'API key is valid but rate limited or quota exceeded',
+          };
+        }
+
+        // If it's a 404 (model not found), continue to the next model
+        if (message.includes('not found') || message.includes('404')) {
+          continue;
+        }
+
+        // For other errors, we might want to fail immediately or continue.
+        // Failing safe by returning the error here.
+        return {
+          valid: false,
+          error: `Failed to validate API key: ${redactSensitive(error.message)}`,
+        };
+      }
+    }
+  }
+
+  // If we get here, all models failed
+  if (lastError instanceof Error) {
     return {
       valid: false,
-      error: 'Unknown error validating API key',
+      error: `Failed to validate API key: ${redactSensitive(lastError.message)}`,
     };
   }
+
+  return {
+    valid: false,
+    error: 'Unknown error validating API key',
+  };
 }
 
 /**

@@ -1,6 +1,6 @@
 import fs from 'fs';
 import { getDb } from '../db/index.js';
-import { loadConfig, isConfigured } from '../config/config.js';
+import { loadConfig, loadConfigAsync, isConfigured } from '../config/config.js';
 import { getRateLimitInfo, type RateLimitStats } from '../github/client.js';
 
 /**
@@ -60,7 +60,7 @@ export async function getStatus(): Promise<StatusResult> {
     throw new NotConfiguredError();
   }
 
-  const config = loadConfig();
+  const config = await loadConfigAsync();
   const dbPath = config.dbPath;
   const db = getDb(dbPath);
 

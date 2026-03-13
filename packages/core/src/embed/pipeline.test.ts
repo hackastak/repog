@@ -14,6 +14,7 @@ import fs from 'fs';
 // Mock config module
 vi.mock('../config/config.js', () => ({
   loadConfig: vi.fn(),
+  loadConfigAsync: vi.fn(),
 }));
 
 // Mock embedChunks
@@ -21,7 +22,7 @@ vi.mock('../gemini/embeddings.js', () => ({
   embedChunks: vi.fn(),
 }));
 
-import { loadConfig } from '../config/config.js';
+import { loadConfig, loadConfigAsync } from '../config/config.js';
 import { embedChunks } from '../gemini/embeddings.js';
 
 // Generate a mock embedding with 768 dimensions
@@ -53,6 +54,11 @@ describe('embed/pipeline', () => {
 
     // Setup default config mock
     vi.mocked(loadConfig).mockReturnValue({
+      githubPat: null,
+      geminiKey: null,
+      dbPath,
+    });
+    vi.mocked(loadConfigAsync).mockResolvedValue({
       githubPat: 'ghp_test',
       geminiKey: 'test-gemini-key',
       dbPath,
@@ -72,7 +78,7 @@ describe('embed/pipeline', () => {
 
   describe('runEmbedPipeline', () => {
     it('yields error when no Gemini API key is configured', async () => {
-      vi.mocked(loadConfig).mockReturnValue({
+      vi.mocked(loadConfigAsync).mockResolvedValue({
         githubPat: 'ghp_test',
         geminiKey: null,
         dbPath,

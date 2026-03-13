@@ -1,4 +1,4 @@
-import { loadConfig } from '../config/config.js';
+import { loadConfigAsync } from '../config/config.js';
 import { getDb } from '../db/index.js';
 import { embedQuery } from '../gemini/embeddings.js';
 
@@ -100,7 +100,7 @@ export async function searchRepos(
 ): Promise<SearchQueryResult> {
   try {
     // Load config
-    const config = loadConfig();
+    const config = await loadConfigAsync();
     if (!config.geminiKey) {
       return emptyResult();
     }

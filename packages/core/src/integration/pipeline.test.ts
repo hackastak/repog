@@ -181,15 +181,20 @@ describe('Integration: Sync → Embed → Search Pipeline', () => {
     // Initialize database
     initDb(dbPath);
 
+    // Reset mocks before setting up defaults
+    vi.clearAllMocks();
+
     // Setup config mock
     vi.mocked(loadConfig).mockReturnValue({
+      githubPat: null,
+      geminiKey: null,
+      dbPath,
+    });
+    vi.mocked(loadConfigAsync).mockResolvedValue({
       githubPat: 'ghp_test_token',
       geminiKey: 'test-gemini-key',
       dbPath,
     });
-
-    // Reset mocks
-    vi.clearAllMocks();
   });
 
   afterEach(() => {

@@ -5,6 +5,7 @@ import type { SearchResult } from '../search/query.js';
 // Mock dependencies
 vi.mock('../config/config.js', () => ({
   loadConfig: vi.fn(),
+  loadConfigAsync: vi.fn(),
   isConfigured: vi.fn(),
 }));
 
@@ -18,11 +19,12 @@ vi.mock('../gemini/llm.js', () => ({
 }));
 
 // Import mocked modules
-import { loadConfig, isConfigured } from '../config/config.js';
+import { loadConfig, loadConfigAsync, isConfigured } from '../config/config.js';
 import { searchRepos } from '../search/query.js';
 import { streamLLM } from '../gemini/llm.js';
 
 const mockedLoadConfig = vi.mocked(loadConfig);
+const mockedLoadConfigAsync = vi.mocked(loadConfigAsync);
 const mockedIsConfigured = vi.mocked(isConfigured);
 const mockedSearchRepos = vi.mocked(searchRepos);
 const mockedStreamLLM = vi.mocked(streamLLM);
@@ -60,6 +62,11 @@ describe('ask/ask', () => {
     // Default mocks
     mockedIsConfigured.mockReturnValue(true);
     mockedLoadConfig.mockReturnValue({
+      githubPat: null,
+      geminiKey: null,
+      dbPath: '/test/db.db',
+    });
+    mockedLoadConfigAsync.mockResolvedValue({
       githubPat: 'test-pat',
       geminiKey: 'test-gemini-key',
       dbPath: '/test/db.db',

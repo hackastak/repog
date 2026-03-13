@@ -6,6 +6,7 @@ import type { LLMResult, LLMError } from '../gemini/llm.js';
 // Mock dependencies
 vi.mock('../config/config.js', () => ({
   loadConfig: vi.fn(),
+  loadConfigAsync: vi.fn(),
 }));
 
 vi.mock('../search/query.js', () => ({
@@ -18,11 +19,12 @@ vi.mock('../gemini/llm.js', () => ({
 }));
 
 // Import mocked modules
-import { loadConfig } from '../config/config.js';
+import { loadConfig, loadConfigAsync } from '../config/config.js';
 import { searchRepos } from '../search/query.js';
 import { callLLM } from '../gemini/llm.js';
 
 const mockLoadConfig = vi.mocked(loadConfig);
+const mockLoadConfigAsync = vi.mocked(loadConfigAsync);
 const mockSearchRepos = vi.mocked(searchRepos);
 const mockCallLLM = vi.mocked(callLLM);
 
@@ -75,6 +77,11 @@ describe('recommend/recommend', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockLoadConfig.mockReturnValue({
+      githubPat: null,
+      geminiKey: null,
+      dbPath: '/test/path.db',
+    });
+    mockLoadConfigAsync.mockResolvedValue({
       githubPat: 'test-token',
       geminiKey: 'test-gemini-key',
       dbPath: '/test/path.db',

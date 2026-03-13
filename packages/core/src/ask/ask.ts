@@ -3,7 +3,7 @@
  * Uses RAG: vector search retrieves relevant chunks, then Gemini answers.
  */
 
-import { loadConfig, isConfigured } from '../config/config.js';
+import { loadConfig, loadConfigAsync, isConfigured } from '../config/config.js';
 import { searchRepos, type SearchResult } from '../search/query.js';
 import { streamLLM, isLLMError } from '../gemini/llm.js';
 
@@ -163,7 +163,7 @@ export async function askQuestion(
       );
     }
 
-    const config = loadConfig();
+    const config = await loadConfigAsync();
     if (!config.geminiKey) {
       return safeResult(
         options.question,

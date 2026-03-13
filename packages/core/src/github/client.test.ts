@@ -4,6 +4,7 @@ import { getRateLimitInfo } from './client.js';
 // Mock the config module
 vi.mock('../config/config.js', () => ({
   loadConfig: vi.fn(),
+  loadConfigAsync: vi.fn(),
 }));
 
 // Mock Octokit
@@ -11,7 +12,7 @@ vi.mock('octokit', () => ({
   Octokit: vi.fn(),
 }));
 
-import { loadConfig } from '../config/config.js';
+import { loadConfig, loadConfigAsync } from '../config/config.js';
 import { Octokit } from 'octokit';
 
 describe('github/client', () => {
@@ -25,7 +26,7 @@ describe('github/client', () => {
 
   describe('getRateLimitInfo', () => {
     it('returns null when no GitHub PAT is configured', async () => {
-      vi.mocked(loadConfig).mockReturnValue({
+      vi.mocked(loadConfigAsync).mockResolvedValue({
         githubPat: null,
         geminiKey: null,
         dbPath: '/tmp/test.db',
@@ -39,7 +40,7 @@ describe('github/client', () => {
     it('returns rate limit stats when API call succeeds', async () => {
       const mockResetTime = Math.floor(Date.now() / 1000) + 3600; // 1 hour from now
 
-      vi.mocked(loadConfig).mockReturnValue({
+      vi.mocked(loadConfigAsync).mockResolvedValue({
         githubPat: 'ghp_testtoken',
         geminiKey: null,
         dbPath: '/tmp/test.db',
@@ -77,7 +78,7 @@ describe('github/client', () => {
     it('returns available=false when remaining is 0', async () => {
       const mockResetTime = Math.floor(Date.now() / 1000) + 3600;
 
-      vi.mocked(loadConfig).mockReturnValue({
+      vi.mocked(loadConfigAsync).mockResolvedValue({
         githubPat: 'ghp_testtoken',
         geminiKey: null,
         dbPath: '/tmp/test.db',
@@ -111,7 +112,7 @@ describe('github/client', () => {
     });
 
     it('returns null on API error - does not throw', async () => {
-      vi.mocked(loadConfig).mockReturnValue({
+      vi.mocked(loadConfigAsync).mockResolvedValue({
         githubPat: 'ghp_testtoken',
         geminiKey: null,
         dbPath: '/tmp/test.db',
@@ -133,7 +134,7 @@ describe('github/client', () => {
     });
 
     it('returns null on authentication error - does not throw', async () => {
-      vi.mocked(loadConfig).mockReturnValue({
+      vi.mocked(loadConfigAsync).mockResolvedValue({
         githubPat: 'ghp_invalidtoken',
         geminiKey: null,
         dbPath: '/tmp/test.db',

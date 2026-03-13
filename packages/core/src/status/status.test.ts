@@ -14,13 +14,17 @@ vi.mock('keytar', () => ({
 }));
 
 import { getStatus, NotConfiguredError } from './status.js';
-import * as configModule from '../config/config.js';
+import { loadConfig, loadConfigAsync, isConfigured } from '../config/config.js';
 import * as clientModule from '../github/client.js';
 import { closeDb } from '../db/index.js';
 import { initDb } from '../db/init.js';
 
 // Mock dependencies
-vi.mock('../config/config.js');
+vi.mock('../config/config.js', () => ({
+  loadConfig: vi.fn(),
+  loadConfigAsync: vi.fn(),
+  isConfigured: vi.fn(),
+}));
 vi.mock('../github/client.js');
 
 describe('getStatus', () => {
@@ -35,8 +39,13 @@ describe('getStatus', () => {
     initDb(dbPath);
     
     // Default mocks
-    vi.mocked(configModule.isConfigured).mockReturnValue(true);
-    vi.mocked(configModule.loadConfig).mockReturnValue({
+    vi.mocked(isConfigured).mockReturnValue(true);
+    vi.mocked(loadConfig).mockReturnValue({
+      githubPat: null,
+      geminiKey: null,
+      dbPath: dbPath
+    });
+    vi.mocked(loadConfigAsync).mockResolvedValue({
       githubPat: 'test-pat',
       geminiKey: 'test-key',
       dbPath: dbPath
@@ -61,7 +70,7 @@ describe('getStatus', () => {
   });
 
   it('throws NotConfiguredError if not configured', async () => {
-    vi.mocked(configModule.isConfigured).mockReturnValue(false);
+    vi.mocked(isConfigured).mockReturnValue(false);
     await expect(getStatus()).rejects.toThrow(NotConfiguredError);
   });
 

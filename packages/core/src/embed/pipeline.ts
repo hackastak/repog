@@ -1,4 +1,4 @@
-import { loadConfig } from '../config/config.js';
+import { loadConfig, loadConfigAsync } from '../config/config.js';
 import { getDb } from '../db/index.js';
 import { embedChunks } from '../gemini/embeddings.js';
 import type { Repo } from '../types/index.js';
@@ -85,7 +85,7 @@ export async function* runEmbedPipeline(
 
   try {
     // Load config and get API key
-    const config = loadConfig();
+    const config = await loadConfigAsync();
     if (!config.geminiKey) {
       yield {
         type: 'error',

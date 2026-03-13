@@ -9,6 +9,7 @@ import fs from 'fs';
 // Mock config module
 vi.mock('../config/config.js', () => ({
   loadConfig: vi.fn(),
+  loadConfigAsync: vi.fn(),
 }));
 
 // Mock embedQuery
@@ -16,7 +17,7 @@ vi.mock('../gemini/embeddings.js', () => ({
   embedQuery: vi.fn(),
 }));
 
-import { loadConfig } from '../config/config.js';
+import { loadConfig, loadConfigAsync } from '../config/config.js';
 import { embedQuery } from '../gemini/embeddings.js';
 
 // Generate a mock embedding with 768 dimensions
@@ -39,6 +40,11 @@ describe('search/query', () => {
 
     // Setup default config mock
     vi.mocked(loadConfig).mockReturnValue({
+      githubPat: null,
+      geminiKey: null,
+      dbPath,
+    });
+    vi.mocked(loadConfigAsync).mockResolvedValue({
       githubPat: 'ghp_test',
       geminiKey: 'test-gemini-key',
       dbPath,
@@ -58,7 +64,7 @@ describe('search/query', () => {
 
   describe('searchRepos', () => {
     it('returns empty results when no Gemini API key is configured', async () => {
-      vi.mocked(loadConfig).mockReturnValue({
+      vi.mocked(loadConfigAsync).mockResolvedValue({
         githubPat: 'ghp_test',
         geminiKey: null,
         dbPath,
@@ -413,7 +419,7 @@ describe('search/query', () => {
       vi.mocked(embedQuery).mockResolvedValue(mockEmbedding);
 
       // Use a non-existent database path
-      vi.mocked(loadConfig).mockReturnValue({
+      vi.mocked(loadConfigAsync).mockResolvedValue({
         githubPat: 'ghp_test',
         geminiKey: 'test-key',
         dbPath: '/nonexistent/path/db.sqlite',

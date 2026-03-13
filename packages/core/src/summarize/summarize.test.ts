@@ -6,6 +6,7 @@ import { initDb } from '../db/init.js';
 // Mock dependencies
 vi.mock('../config/config.js', () => ({
   loadConfig: vi.fn(),
+  loadConfigAsync: vi.fn(),
   isConfigured: vi.fn(),
 }));
 
@@ -15,10 +16,11 @@ vi.mock('../gemini/llm.js', () => ({
 }));
 
 // Import mocked modules
-import { loadConfig } from '../config/config.js';
+import { loadConfig, loadConfigAsync } from '../config/config.js';
 import { streamLLM } from '../gemini/llm.js';
 
 const mockedLoadConfig = vi.mocked(loadConfig);
+const mockedLoadConfigAsync = vi.mocked(loadConfigAsync);
 const mockedStreamLLM = vi.mocked(streamLLM);
 
 describe('summarize/summarize', () => {
@@ -29,6 +31,11 @@ describe('summarize/summarize', () => {
 
     // Default mocks
     mockedLoadConfig.mockReturnValue({
+      githubPat: null,
+      geminiKey: null,
+      dbPath: DB_PATH,
+    });
+    mockedLoadConfigAsync.mockResolvedValue({
       githubPat: 'test-pat',
       geminiKey: 'test-gemini-key',
       dbPath: DB_PATH,
@@ -169,7 +176,7 @@ describe('summarize/summarize', () => {
     });
     
     it('returns safe result with error message when not configured', async () => {
-       mockedLoadConfig.mockReturnValue({
+       mockedLoadConfigAsync.mockResolvedValue({
           githubPat: 'test-pat',
           geminiKey: null,
           dbPath: DB_PATH,

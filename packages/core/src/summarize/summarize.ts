@@ -1,5 +1,5 @@
 import { getDb } from '../db/index.js';
-import { loadConfig } from '../config/config.js';
+import { loadConfigAsync } from '../config/config.js';
 import { streamLLM, isLLMError } from '../gemini/llm.js';
 
 /**
@@ -72,7 +72,7 @@ export async function summarizeRepo(
   const repoName = options.repo;
 
   try {
-    const config = loadConfig();
+    const config = await loadConfigAsync();
 
     if (!config.geminiKey) {
       const summary = 'Error: Gemini API key is not configured. Run `repog init` first.';

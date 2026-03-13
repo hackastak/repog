@@ -1,5 +1,5 @@
 import { Octokit } from 'octokit';
-import { loadConfig } from '../config/config.js';
+import { loadConfigAsync } from '../config/config.js';
 import { githubRateLimiter } from './rateLimiter.js';
 
 export class GitHubClient extends Octokit {
@@ -54,7 +54,7 @@ export interface RateLimitStats {
  * @returns Rate limit statistics or null if the request fails
  */
 export async function getRateLimitInfo(): Promise<RateLimitStats | null> {
-  const config = loadConfig();
+  const config = await loadConfigAsync();
   
   // If no token is configured, we can't check rate limits accurately for authenticated user
   // (Unauthenticated requests have very low limits)

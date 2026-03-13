@@ -1,4 +1,4 @@
-import { loadConfig } from '../config/config.js';
+import { loadConfigAsync } from '../config/config.js';
 import { searchRepos, type SearchResult } from '../search/query.js';
 import { callLLM, isLLMError } from '../gemini/llm.js';
 
@@ -230,7 +230,7 @@ export async function recommendRepos(
 
   try {
     // Load config to get API key
-    const config = loadConfig();
+    const config = await loadConfigAsync();
     if (!config.geminiKey) {
       return emptyResult(query, 0, performance.now() - startTime);
     }

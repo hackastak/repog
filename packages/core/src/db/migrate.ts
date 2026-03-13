@@ -12,6 +12,17 @@ export function migrate(db: Database.Database): void {
   // Load sqlite-vec extension first
   sqliteVec.load(db);
 
+  // Migration: If chunk_embeddings has the old 'chunk_id' column name, drop it
+  // This is required because sqlite-vec's vec0 prefers 'rowid' as the primary key name
+  try {
+    const tableInfo = db.prepare("PRAGMA table_info('chunk_embeddings')").all() as Array<{ name: string }>;
+    if (tableInfo.length > 0 && tableInfo.some(col => col.name === 'chunk_id')) {
+      db.exec('DROP TABLE chunk_embeddings');
+    }
+  } catch (err) {
+    // Table might not exist yet, ignore
+  }
+
   // Run all standard schema statements in a transaction
   db.transaction(() => {
     for (const statement of ALL_SCHEMA_STATEMENTS) {

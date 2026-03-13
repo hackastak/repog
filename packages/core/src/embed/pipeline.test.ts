@@ -409,7 +409,7 @@ describe('embed/pipeline', () => {
       // Embed only 1 chunk
       const mockEmbedding = createMockEmbedding();
       const embeddingBuffer = Buffer.from(new Float32Array(mockEmbedding).buffer);
-      db.prepare(`INSERT INTO chunk_embeddings (chunk_id, embedding) VALUES (1, ?)`).run(embeddingBuffer);
+      db.prepare(`INSERT INTO chunk_embeddings (rowid, embedding) VALUES (1, ?)`).run(embeddingBuffer);
 
       const count = getPendingEmbedCount();
       expect(count).toBe(2); // 3 chunks - 1 embedded = 2 pending
@@ -431,7 +431,7 @@ describe('embed/pipeline', () => {
 
       const mockEmbedding = createMockEmbedding();
       const embeddingBuffer = Buffer.from(new Float32Array(mockEmbedding).buffer);
-      db.prepare(`INSERT INTO chunk_embeddings (chunk_id, embedding) VALUES (1, ?)`).run(embeddingBuffer);
+      db.prepare(`INSERT INTO chunk_embeddings (rowid, embedding) VALUES (1, ?)`).run(embeddingBuffer);
 
       const count = getPendingEmbedCount();
       expect(count).toBe(0);

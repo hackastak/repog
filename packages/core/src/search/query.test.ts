@@ -121,7 +121,7 @@ describe('search/query', () => {
       // Insert embedding
       const embeddingBuffer = Buffer.from(new Float32Array(mockEmbedding).buffer);
       db.prepare(`
-        INSERT INTO chunk_embeddings (chunk_id, embedding)
+        INSERT INTO chunk_embeddings (rowid, embedding)
         VALUES (1, ?)
       `).run(embeddingBuffer);
 
@@ -162,8 +162,8 @@ describe('search/query', () => {
 
       // Insert embeddings for both chunks
       const embeddingBuffer = Buffer.from(new Float32Array(mockEmbedding).buffer);
-      db.prepare(`INSERT INTO chunk_embeddings (chunk_id, embedding) VALUES (1, ?)`).run(embeddingBuffer);
-      db.prepare(`INSERT INTO chunk_embeddings (chunk_id, embedding) VALUES (2, ?)`).run(embeddingBuffer);
+      db.prepare(`INSERT INTO chunk_embeddings (rowid, embedding) VALUES (1, ?)`).run(embeddingBuffer);
+      db.prepare(`INSERT INTO chunk_embeddings (rowid, embedding) VALUES (2, ?)`).run(embeddingBuffer);
 
       const result = await searchRepos('test query', { limit: 10 });
 
@@ -204,8 +204,8 @@ describe('search/query', () => {
       const embeddingBuffer = Buffer.from(new Float32Array(mockEmbedding).buffer);
       db.prepare(`INSERT INTO chunks (repo_id, chunk_type, chunk_index, content, token_estimate) VALUES (1, 'metadata', 0, 'TS content', 10)`).run();
       db.prepare(`INSERT INTO chunks (repo_id, chunk_type, chunk_index, content, token_estimate) VALUES (2, 'metadata', 0, 'Python content', 10)`).run();
-      db.prepare(`INSERT INTO chunk_embeddings (chunk_id, embedding) VALUES (1, ?)`).run(embeddingBuffer);
-      db.prepare(`INSERT INTO chunk_embeddings (chunk_id, embedding) VALUES (2, ?)`).run(embeddingBuffer);
+      db.prepare(`INSERT INTO chunk_embeddings (rowid, embedding) VALUES (1, ?)`).run(embeddingBuffer);
+      db.prepare(`INSERT INTO chunk_embeddings (rowid, embedding) VALUES (2, ?)`).run(embeddingBuffer);
 
       // Search with TypeScript filter
       const result = await searchRepos('test', { language: 'TypeScript' });
@@ -246,8 +246,8 @@ describe('search/query', () => {
       const embeddingBuffer = Buffer.from(new Float32Array(mockEmbedding).buffer);
       db.prepare(`INSERT INTO chunks (repo_id, chunk_type, chunk_index, content, token_estimate) VALUES (1, 'metadata', 0, 'content', 10)`).run();
       db.prepare(`INSERT INTO chunks (repo_id, chunk_type, chunk_index, content, token_estimate) VALUES (2, 'metadata', 0, 'content', 10)`).run();
-      db.prepare(`INSERT INTO chunk_embeddings (chunk_id, embedding) VALUES (1, ?)`).run(embeddingBuffer);
-      db.prepare(`INSERT INTO chunk_embeddings (chunk_id, embedding) VALUES (2, ?)`).run(embeddingBuffer);
+      db.prepare(`INSERT INTO chunk_embeddings (rowid, embedding) VALUES (1, ?)`).run(embeddingBuffer);
+      db.prepare(`INSERT INTO chunk_embeddings (rowid, embedding) VALUES (2, ?)`).run(embeddingBuffer);
 
       const result = await searchRepos('test', { starred: true });
 
@@ -287,8 +287,8 @@ describe('search/query', () => {
       const embeddingBuffer = Buffer.from(new Float32Array(mockEmbedding).buffer);
       db.prepare(`INSERT INTO chunks (repo_id, chunk_type, chunk_index, content, token_estimate) VALUES (1, 'metadata', 0, 'content', 10)`).run();
       db.prepare(`INSERT INTO chunks (repo_id, chunk_type, chunk_index, content, token_estimate) VALUES (2, 'metadata', 0, 'content', 10)`).run();
-      db.prepare(`INSERT INTO chunk_embeddings (chunk_id, embedding) VALUES (1, ?)`).run(embeddingBuffer);
-      db.prepare(`INSERT INTO chunk_embeddings (chunk_id, embedding) VALUES (2, ?)`).run(embeddingBuffer);
+      db.prepare(`INSERT INTO chunk_embeddings (rowid, embedding) VALUES (1, ?)`).run(embeddingBuffer);
+      db.prepare(`INSERT INTO chunk_embeddings (rowid, embedding) VALUES (2, ?)`).run(embeddingBuffer);
 
       const result = await searchRepos('test', { owned: true });
 
@@ -327,8 +327,8 @@ describe('search/query', () => {
       const embeddingBuffer = Buffer.from(new Float32Array(mockEmbedding).buffer);
       db.prepare(`INSERT INTO chunks (repo_id, chunk_type, chunk_index, content, token_estimate) VALUES (1, 'metadata', 0, 'content', 10)`).run();
       db.prepare(`INSERT INTO chunks (repo_id, chunk_type, chunk_index, content, token_estimate) VALUES (2, 'metadata', 0, 'content', 10)`).run();
-      db.prepare(`INSERT INTO chunk_embeddings (chunk_id, embedding) VALUES (1, ?)`).run(embeddingBuffer);
-      db.prepare(`INSERT INTO chunk_embeddings (chunk_id, embedding) VALUES (2, ?)`).run(embeddingBuffer);
+      db.prepare(`INSERT INTO chunk_embeddings (rowid, embedding) VALUES (1, ?)`).run(embeddingBuffer);
+      db.prepare(`INSERT INTO chunk_embeddings (rowid, embedding) VALUES (2, ?)`).run(embeddingBuffer);
 
       const result = await searchRepos('test', { owner: 'alice' });
 
@@ -361,7 +361,7 @@ describe('search/query', () => {
         `).run(i);
 
         // Use literal SQL for sqlite-vec virtual table (doesn't accept parameterized integers)
-        db.prepare(`INSERT INTO chunk_embeddings (chunk_id, embedding) VALUES (${i}, ?)`).run(embeddingBuffer);
+        db.prepare(`INSERT INTO chunk_embeddings (rowid, embedding) VALUES (${i}, ?)`).run(embeddingBuffer);
       }
 
       const result = await searchRepos('test', { limit: 2 });
@@ -394,7 +394,7 @@ describe('search/query', () => {
         `).run(i);
 
         // Use literal SQL for sqlite-vec virtual table (doesn't accept parameterized integers)
-        db.prepare(`INSERT INTO chunk_embeddings (chunk_id, embedding) VALUES (${i}, ?)`).run(embeddingBuffer);
+        db.prepare(`INSERT INTO chunk_embeddings (rowid, embedding) VALUES (${i}, ?)`).run(embeddingBuffer);
       }
 
       const result = await searchRepos('test');

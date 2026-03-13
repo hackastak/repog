@@ -202,7 +202,7 @@ describe('gemini/embeddings', () => {
     it('returns the embedding model name', () => {
       const model = getEmbeddingModel();
 
-      expect(model).toBe('text-embedding-004');
+      expect(model).toBe('gemini-embedding-2-preview');
     });
   });
 

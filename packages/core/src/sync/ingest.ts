@@ -9,6 +9,7 @@ import {
   fetchStarredRepos,
   type GitHubRepo,
 } from '../github/repos.js';
+import { splitIntoChunks } from './chunker.js';
 
 export interface IngestOptions {
   includeOwned: boolean;
@@ -192,23 +193,29 @@ export async function* ingestRepos(
           content: JSON.stringify(metadata),
         });
 
-        // Insert readme chunk
+        // Insert readme chunks
         if (readme && readme.trim().length > 0) {
-          insertChunkStmt.run({
-            repo_id: repoId,
-            chunk_type: 'readme',
-            chunk_index: 0,
-            content: readme,
+          const readmeChunks = splitIntoChunks(readme);
+          readmeChunks.forEach((chunk, index) => {
+            insertChunkStmt.run({
+              repo_id: repoId,
+              chunk_type: 'readme',
+              chunk_index: index,
+              content: chunk,
+            });
           });
         }
 
-        // Insert file_tree chunk
+        // Insert file_tree chunks
         if (fileTree && fileTree.trim().length > 0) {
-          insertChunkStmt.run({
-            repo_id: repoId,
-            chunk_type: 'file_tree',
-            chunk_index: 0,
-            content: fileTree,
+          const treeChunks = splitIntoChunks(fileTree);
+          treeChunks.forEach((chunk, index) => {
+            insertChunkStmt.run({
+              repo_id: repoId,
+              chunk_type: 'file_tree',
+              chunk_index: index,
+              content: chunk,
+            });
           });
         }
       });

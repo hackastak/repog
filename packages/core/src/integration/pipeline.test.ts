@@ -155,12 +155,12 @@ function insertChunk(
 
 /**
  * Insert an embedding for a chunk.
- * Uses literal SQL for chunk_id due to sqlite-vec limitations.
+ * Uses literal SQL for rowid due to sqlite-vec limitations.
  */
 function insertEmbedding(db: ReturnType<typeof getDb>, chunkId: number, embedding: number[]): void {
   const embeddingBuffer = Buffer.from(new Float32Array(embedding).buffer);
   // sqlite-vec requires literal integers for primary key, not parameters
-  db.prepare(`INSERT INTO chunk_embeddings (chunk_id, embedding) VALUES (${chunkId}, ?)`).run(
+  db.prepare(`INSERT INTO chunk_embeddings (rowid, embedding) VALUES (${chunkId}, ?)`).run(
     embeddingBuffer
   );
 }

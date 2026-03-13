@@ -172,7 +172,7 @@ export async function searchRepos(
         c.content,
         vec_distance_cosine(ce.embedding, ?) as distance
       FROM chunk_embeddings ce
-      JOIN chunks c ON c.id = ce.chunk_id
+      JOIN chunks c ON c.id = ce.rowid
       JOIN repos r ON r.id = c.repo_id
       WHERE 1=1
         ${whereClause}

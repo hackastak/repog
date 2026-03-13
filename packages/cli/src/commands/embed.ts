@@ -85,6 +85,13 @@ async function runVerboseMode(options: EmbedOptions): Promise<void> {
               `  + Batch ${progress.batchIndex}/${progress.batchTotal} - ${progress.chunksEmbedded} chunks embedded`
             )
           );
+
+          // Report individual chunk errors in this batch if any
+          if (progress.batchErrors && progress.batchErrors.length > 0) {
+            progress.batchErrors.forEach((err) => {
+              console.log(chalk.red(`    x Chunk ${err.chunkId}: ${err.error}`));
+            });
+          }
           break;
 
         case 'repo_skip':

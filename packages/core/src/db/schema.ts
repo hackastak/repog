@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS chunks (
 
 export const CREATE_CHUNK_EMBEDDINGS_TABLE = `
 CREATE VIRTUAL TABLE IF NOT EXISTS chunk_embeddings USING vec0(
-  chunk_id INTEGER PRIMARY KEY,
+  rowid INTEGER PRIMARY KEY,
   embedding FLOAT[768]
 );
 `;

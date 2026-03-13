@@ -2,12 +2,13 @@ import { GoogleGenerativeAI, TaskType } from '@google/generative-ai';
 
 /**
  * The embedding model to use.
- * text-embedding-004 produces 768-dimensional vectors.
+ * gemini-embedding-2-preview is a multimodal model that supports flexible dimensions.
  */
-const EMBEDDING_MODEL = 'text-embedding-004';
+const EMBEDDING_MODEL = 'gemini-embedding-2-preview';
 
 /**
- * Expected embedding dimensions from text-embedding-004.
+ * Expected embedding dimensions.
+ * We stick to 768 as it's efficient and matches our database schema.
  */
 const EMBEDDING_DIMENSIONS = 768;
 
@@ -67,7 +68,8 @@ export async function embedChunks(
         role: 'user' as const,
       },
       taskType: TaskType.RETRIEVAL_DOCUMENT,
-    }));
+      outputDimensionality: EMBEDDING_DIMENSIONS,
+    } as any));
 
     const response = await model.batchEmbedContents({ requests });
 
@@ -103,13 +105,36 @@ export async function embedChunks(
 
     return { results, errors };
   } catch (error) {
-    // If the entire batch request fails, return all chunks as errors
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    // If the entire batch request fails (e.g. batch poisoning or quota),
+    // we attempt each chunk individually to isolate the failure
     for (const chunk of chunks) {
-      errors.push({
-        chunkId: chunk.id,
-        error: errorMessage,
-      });
+      try {
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({ model: EMBEDDING_MODEL });
+
+        const result = await model.embedContent({
+          content: { parts: [{ text: chunk.content }], role: 'user' },
+          taskType: TaskType.RETRIEVAL_DOCUMENT,
+          outputDimensionality: EMBEDDING_DIMENSIONS,
+        } as any);
+
+        const embedding = result.embedding?.values;
+        if (embedding && embedding.length === EMBEDDING_DIMENSIONS) {
+          results.push({ chunkId: chunk.id, embedding });
+        } else {
+          errors.push({
+            chunkId: chunk.id,
+            error: !embedding
+              ? 'No embedding returned'
+              : `Invalid dimensions: ${embedding.length}`,
+          });
+        }
+      } catch (innerError) {
+        errors.push({
+          chunkId: chunk.id,
+          error: innerError instanceof Error ? innerError.message : 'Unknown error',
+        });
+      }
     }
     return { results, errors };
   }
@@ -135,7 +160,8 @@ export async function embedQuery(apiKey: string, query: string): Promise<number[
         role: 'user',
       },
       taskType: TaskType.RETRIEVAL_QUERY,
-    });
+      outputDimensionality: EMBEDDING_DIMENSIONS,
+    } as any);
 
     const embedding = result.embedding?.values;
 

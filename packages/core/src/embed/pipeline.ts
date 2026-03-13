@@ -46,6 +46,8 @@ export interface EmbedProgress {
   totalChunks?: number;
   /** Error message (for error events) */
   errorMessage?: string;
+  /** Detailed errors for individual chunks in a batch (optional) */
+  batchErrors?: Array<{ chunkId: number; error: string }>;
 }
 
 /**
@@ -206,11 +208,6 @@ export async function* runEmbedPipeline(
 
     const batchTotal = batches.length;
 
-    // Prepare insert statement for embeddings
-    const insertEmbedding = db.prepare(
-      `INSERT OR REPLACE INTO chunk_embeddings (chunk_id, embedding) VALUES (?, ?)`
-    );
-
     // Track which repos have been fully processed
     const repoChunkCounts = new Map<number, { total: number; processed: number }>();
     for (const chunk of chunks) {
@@ -239,9 +236,22 @@ export async function* runEmbedPipeline(
 
         // Insert successful embeddings
         for (const embedding of result.results) {
-          const buffer = Buffer.from(new Float32Array(embedding.embedding).buffer);
-          insertEmbedding.run(embedding.chunkId, buffer);
-          chunksEmbedded++;
+          try {
+            const buffer = Buffer.from(new Float32Array(embedding.embedding).buffer);
+            // sqlite-vec's vec0 virtual table sometimes has issues with INSERT OR REPLACE.
+            // Using explicit DELETE then INSERT for maximum compatibility.
+            db.prepare(`DELETE FROM chunk_embeddings WHERE rowid = ${Number(embedding.chunkId)}`).run();
+            db.prepare(`INSERT INTO chunk_embeddings (rowid, embedding) VALUES (${Number(embedding.chunkId)}, ?)`).run(buffer);
+            chunksEmbedded++;
+          } catch (dbErr) {
+            chunksErrored++;
+            if (!result.errors.some(e => e.chunkId === embedding.chunkId)) {
+              result.errors.push({
+                chunkId: embedding.chunkId,
+                error: dbErr instanceof Error ? `DB Error: ${dbErr.message}` : 'Unknown DB error',
+              });
+            }
+          }
 
           // Track progress per repo
           const chunk = batch.find((c) => c.id === embedding.chunkId);
@@ -270,6 +280,7 @@ export async function* runEmbedPipeline(
           chunksSkipped,
           chunksErrored,
           totalChunks,
+          batchErrors: result.errors.length > 0 ? result.errors.map(e => ({ chunkId: e.chunkId, error: e.error })) : undefined,
         };
       } catch (error) {
         // Batch processing error - count all as errors
@@ -325,8 +336,8 @@ export function getPendingEmbedCount(): number {
     .prepare(
       `SELECT COUNT(*) as count
        FROM chunks c
-       LEFT JOIN chunk_embeddings ce ON c.id = ce.chunk_id
-       WHERE ce.chunk_id IS NULL`
+       LEFT JOIN chunk_embeddings ce ON c.id = ce.rowid
+       WHERE ce.rowid IS NULL`
     )
     .get() as { count: number };
 

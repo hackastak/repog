@@ -19,7 +19,7 @@ export function migrate(db: Database.Database): void {
     if (tableInfo.length > 0 && tableInfo.some(col => col.name === 'chunk_id')) {
       db.exec('DROP TABLE chunk_embeddings');
     }
-  } catch (err) {
+  } catch {
     // Table might not exist yet, ignore
   }
 

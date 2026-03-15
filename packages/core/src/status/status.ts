@@ -1,6 +1,6 @@
 import fs from 'fs';
 import { getDb } from '../db/index.js';
-import { loadConfig, loadConfigAsync, isConfigured } from '../config/config.js';
+import { loadConfigAsync, isConfigured } from '../config/config.js';
 import { getRateLimitInfo, type RateLimitStats } from '../github/client.js';
 
 /**

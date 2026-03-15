@@ -29,56 +29,56 @@ describe('gemini/auth', () => {
     });
 
     it('returns valid for working API key with primary model', async () => {
-      // Mock for gemini-2.0-flash
+      // Mock for gemini-2.5-flash
+      nock(GEMINI_API_HOST)
+        .post('/v1beta/models/gemini-2.5-flash:countTokens')
+        .reply(200, { totalTokens: 1 });
+
+      const result = await validateGeminiKey('valid-api-key');
+
+      expect(result.valid).toBe(true);
+      expect(result.model).toBe('gemini-2.5-flash');
+      expect(result.error).toBeUndefined();
+    });
+
+    it('falls back to gemini-2.0-flash if gemini-2.5-flash is 404', async () => {
+      // Mock for gemini-2.5-flash failing with 404
+      nock(GEMINI_API_HOST)
+        .post('/v1beta/models/gemini-2.5-flash:countTokens')
+        .reply(404, { error: { message: 'Model not found' } });
+
+      // Mock for gemini-2.0-flash succeeding
       nock(GEMINI_API_HOST)
         .post('/v1beta/models/gemini-2.0-flash:countTokens')
         .reply(200, { totalTokens: 1 });
 
-      const result = await validateGeminiKey('valid-api-key');
+      const result = await validateGeminiKey('valid-fallback-key');
 
       expect(result.valid).toBe(true);
       expect(result.model).toBe('gemini-2.0-flash');
       expect(result.error).toBeUndefined();
     });
 
-    it('falls back to gemini-1.5-flash if gemini-2.0-flash is 404', async () => {
+     it('falls back to gemini-3.1-flash if others are 404', async () => {
+      // Mock for gemini-2.5-flash failing with 404
+      nock(GEMINI_API_HOST)
+        .post('/v1beta/models/gemini-2.5-flash:countTokens')
+        .reply(404, { error: { message: 'Model not found' } });
+
       // Mock for gemini-2.0-flash failing with 404
       nock(GEMINI_API_HOST)
         .post('/v1beta/models/gemini-2.0-flash:countTokens')
-        .reply(404, { error: { message: 'Model not found' } });
-
-      // Mock for gemini-1.5-flash succeeding
-      nock(GEMINI_API_HOST)
-        .post('/v1beta/models/gemini-1.5-flash:countTokens')
-        .reply(200, { totalTokens: 1 });
-
-      const result = await validateGeminiKey('valid-fallback-key');
-
-      expect(result.valid).toBe(true);
-      expect(result.model).toBe('gemini-1.5-flash');
-      expect(result.error).toBeUndefined();
-    });
-
-     it('falls back to gemini-3.0-flash if others are 404', async () => {
-      // Mock for gemini-2.0-flash failing with 404
-      nock(GEMINI_API_HOST)
-        .post('/v1beta/models/gemini-2.0-flash:countTokens')
-        .reply(404, { error: { message: 'Model not found' } });
-
-      // Mock for gemini-1.5-flash failing with 404
-      nock(GEMINI_API_HOST)
-        .post('/v1beta/models/gemini-1.5-flash:countTokens')
         .reply(404, { error: { message: 'Model not found' } });
         
-      // Mock for gemini-3.0-flash succeeding
+      // Mock for gemini-3.1-flash succeeding
       nock(GEMINI_API_HOST)
-        .post('/v1beta/models/gemini-3.0-flash:countTokens')
+        .post('/v1beta/models/gemini-3.1-flash:countTokens')
         .reply(200, { totalTokens: 1 });
 
-      const result = await validateGeminiKey('valid-fallback-key-3');
+      const result = await validateGeminiKey('valid-fallback-key-31');
 
       expect(result.valid).toBe(true);
-      expect(result.model).toBe('gemini-3.0-flash');
+      expect(result.model).toBe('gemini-3.1-flash');
       expect(result.error).toBeUndefined();
     });
 
@@ -86,7 +86,7 @@ describe('gemini/auth', () => {
         // Mock all models failing
         nock(GEMINI_API_HOST)
         .post(/.*/)
-        .times(3) // 2.0, 1.5, 3.0
+        .times(3) // 2.5, 2.0, 3.1
         .reply(404, { error: { message: 'Model not found' } });
 
         const result = await validateGeminiKey('no-models-key');
@@ -96,9 +96,9 @@ describe('gemini/auth', () => {
     });
 
     it('returns invalid for 401 authentication error immediately', async () => {
-      // Even if 2.0 fails, a 401 should stop the loop
+      // Even if 2.5 fails, a 401 should stop the loop
       nock(GEMINI_API_HOST)
-        .post('/v1beta/models/gemini-2.0-flash:countTokens')
+        .post('/v1beta/models/gemini-2.5-flash:countTokens')
         .reply(401, { error: { message: 'Invalid API key' } });
 
       const result = await validateGeminiKey('invalid-key');
@@ -109,19 +109,19 @@ describe('gemini/auth', () => {
 
     it('returns valid but with error message for rate limit (429)', async () => {
       nock(GEMINI_API_HOST)
-        .post('/v1beta/models/gemini-2.0-flash:countTokens')
+        .post('/v1beta/models/gemini-2.5-flash:countTokens')
         .reply(429, { error: { message: 'Rate limit exceeded' } });
 
       const result = await validateGeminiKey('rate-limited-key');
 
       expect(result.valid).toBe(true);
-      expect(result.model).toBe('gemini-2.0-flash');
+      expect(result.model).toBe('gemini-2.5-flash');
       expect(result.error).toContain('rate limited');
     });
 
     it('returns invalid for 403 permission error', async () => {
       nock(GEMINI_API_HOST)
-        .post('/v1beta/models/gemini-2.0-flash:countTokens')
+        .post('/v1beta/models/gemini-2.5-flash:countTokens')
         .reply(403, { error: { message: 'Permission denied' } });
 
       const result = await validateGeminiKey('no-permission-key');
@@ -132,7 +132,7 @@ describe('gemini/auth', () => {
 
     it('returns invalid for network errors', async () => {
       nock(GEMINI_API_HOST)
-        .post('/v1beta/models/gemini-2.0-flash:countTokens')
+        .post('/v1beta/models/gemini-2.5-flash:countTokens')
         .replyWithError('Network connection failed');
 
       const result = await validateGeminiKey('some-key');
@@ -146,7 +146,7 @@ describe('gemini/auth', () => {
     it('returns the validation model name', () => {
       const model = getValidationModel();
 
-      expect(model).toBe('gemini-2.0-flash');
+      expect(model).toBe('gemini-2.5-flash');
     });
   });
 });

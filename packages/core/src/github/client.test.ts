@@ -12,7 +12,7 @@ vi.mock('octokit', () => ({
   Octokit: vi.fn(),
 }));
 
-import { loadConfig, loadConfigAsync } from '../config/config.js';
+import { loadConfigAsync } from '../config/config.js';
 import { Octokit } from 'octokit';
 
 describe('github/client', () => {

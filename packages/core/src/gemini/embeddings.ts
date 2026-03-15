@@ -69,6 +69,7 @@ export async function embedChunks(
       },
       taskType: TaskType.RETRIEVAL_DOCUMENT,
       outputDimensionality: EMBEDDING_DIMENSIONS,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any));
 
     const response = await model.batchEmbedContents({ requests });
@@ -104,7 +105,7 @@ export async function embedChunks(
     }
 
     return { results, errors };
-  } catch (error) {
+  } catch {
     // If the entire batch request fails (e.g. batch poisoning or quota),
     // we attempt each chunk individually to isolate the failure
     for (const chunk of chunks) {
@@ -116,6 +117,7 @@ export async function embedChunks(
           content: { parts: [{ text: chunk.content }], role: 'user' },
           taskType: TaskType.RETRIEVAL_DOCUMENT,
           outputDimensionality: EMBEDDING_DIMENSIONS,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } as any);
 
         const embedding = result.embedding?.values;
@@ -161,6 +163,7 @@ export async function embedQuery(apiKey: string, query: string): Promise<number[
       },
       taskType: TaskType.RETRIEVAL_QUERY,
       outputDimensionality: EMBEDDING_DIMENSIONS,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any);
 
     const embedding = result.embedding?.values;

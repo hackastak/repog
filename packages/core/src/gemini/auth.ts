@@ -15,16 +15,16 @@ export interface GeminiAuthResult {
 
 /**
  * The model to use for validation.
- * Using gemini-2.0-flash as it's the current standard.
+ * Using gemini-2.5-flash as it's the current stable standard in March 2026.
  */
-const VALIDATION_MODEL = 'gemini-2.0-flash';
+const VALIDATION_MODEL = 'gemini-2.5-flash';
 
 /**
  * Fallback models to try if the primary validation model is not found.
  * This adds resilience against model deprecation or regional availability issues.
- * Added gemini-3.0-flash as a potential future model.
+ * gemini-2.0-flash is still available until March 31, 2026.
  */
-const FALLBACK_MODELS = ['gemini-1.5-flash', 'gemini-3.0-flash'];
+const FALLBACK_MODELS = ['gemini-2.0-flash', 'gemini-3.1-flash'];
 
 /**
  * Validate a Google Gemini API key.

@@ -3,8 +3,10 @@ import { redactSensitive } from '../utils/format.js';
 
 /**
  * The LLM model to use for text generation.
+ * gemini-2.5-flash is the recommended stable model in March 2026.
  */
-const LLM_MODEL = 'gemini-2.0-flash';
+const LLM_MODEL = 'gemini-2.5-flash';
+const FALLBACK_LLM_MODEL = 'gemini-3.1-flash';
 
 /**
  * Maximum output tokens for LLM responses.
@@ -149,6 +151,26 @@ export async function streamLLM(
   systemPrompt?: string,
   onChunk?: OnChunkCallback
 ): Promise<LLMResult | LLMError> {
+  return streamLLMWithModel(apiKey, prompt, LLM_MODEL, systemPrompt, onChunk)
+    .then(async (result) => {
+      // If primary model fails with "not found" (404), try fallback
+      if (isLLMError(result) && (result.error.includes('not found') || result.error.includes('404'))) {
+        return streamLLMWithModel(apiKey, prompt, FALLBACK_LLM_MODEL, systemPrompt, onChunk);
+      }
+      return result;
+    });
+}
+
+/**
+ * Internal implementation of streamLLM that takes a specific model name.
+ */
+async function streamLLMWithModel(
+  apiKey: string,
+  prompt: string,
+  modelName: string,
+  systemPrompt?: string,
+  onChunk?: OnChunkCallback
+): Promise<LLMResult | LLMError> {
   const startTime = performance.now();
 
   try {
@@ -163,7 +185,7 @@ export async function streamLLM(
       };
       systemInstruction?: string;
     } = {
-      model: LLM_MODEL,
+      model: modelName,
       generationConfig: {
         maxOutputTokens: MAX_OUTPUT_TOKENS,
         temperature: TEMPERATURE,
@@ -182,11 +204,21 @@ export async function streamLLM(
 
     // Collect chunks as they arrive
     const chunks: string[] = [];
-    for await (const chunk of result.stream) {
-      const chunkText = chunk.text();
-      chunks.push(chunkText);
-      if (onChunk) {
-        onChunk(chunkText);
+    try {
+      for await (const chunk of result.stream) {
+        const chunkText = chunk.text();
+        if (chunkText) {
+          chunks.push(chunkText);
+          if (onChunk) {
+            onChunk(chunkText);
+          }
+        }
+      }
+    } catch (error) {
+      // If streaming fails but we already have some chunks, continue.
+      // Otherwise, the final response await below will throw the error.
+      if (chunks.length === 0) {
+        throw error;
       }
     }
 
@@ -196,7 +228,16 @@ export async function streamLLM(
     const durationMs = performance.now() - startTime;
 
     // Assemble the full text from chunks
-    const text = chunks.join('');
+    let text = chunks.join('');
+
+    // If streaming failed to yield any text, try the aggregated response
+    if (!text) {
+      try {
+        text = response.text();
+      } catch {
+        text = ''; // Still empty or blocked
+      }
+    }
 
     // Extract token counts from usage metadata
     const usageMetadata = response.usageMetadata;

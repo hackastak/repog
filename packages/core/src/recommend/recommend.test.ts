@@ -14,19 +14,19 @@ vi.mock('../search/query.js', () => ({
 }));
 
 vi.mock('../gemini/llm.js', () => ({
-  callLLM: vi.fn(),
+  streamLLM: vi.fn(),
   isLLMError: vi.fn((result: LLMResult | LLMError) => 'error' in result && !('text' in result)),
 }));
 
 // Import mocked modules
 import { loadConfig, loadConfigAsync } from '../config/config.js';
 import { searchRepos } from '../search/query.js';
-import { callLLM } from '../gemini/llm.js';
+import { streamLLM } from '../gemini/llm.js';
 
 const mockLoadConfig = vi.mocked(loadConfig);
 const mockLoadConfigAsync = vi.mocked(loadConfigAsync);
 const mockSearchRepos = vi.mocked(searchRepos);
-const mockCallLLM = vi.mocked(callLLM);
+const mockStreamLLM = vi.mocked(streamLLM);
 
 /**
  * Create a mock SearchResult.
@@ -108,7 +108,7 @@ describe('recommend/recommend', () => {
         { rank: 3, repoFullName: 'owner/repo3', htmlUrl: 'https://github.com/owner/repo3', reasoning: 'Also relevant.' },
       ]);
 
-      mockCallLLM.mockResolvedValue({
+      mockStreamLLM.mockResolvedValue({
         text: llmResponse,
         inputTokens: 100,
         outputTokens: 50,
@@ -144,7 +144,7 @@ describe('recommend/recommend', () => {
         { rank: 5, repoFullName: 'owner/repo5', htmlUrl: 'https://github.com/owner/repo5', reasoning: 'Reason 5' },
       ]);
 
-      mockCallLLM.mockResolvedValue({
+      mockStreamLLM.mockResolvedValue({
         text: llmResponse,
         inputTokens: 100,
         outputTokens: 50,
@@ -170,14 +170,14 @@ describe('recommend/recommend', () => {
       expect(result.candidatesConsidered).toBe(0);
       expect(result.query).toBe('obscure query');
       // callLLM should not have been called
-      expect(mockCallLLM).not.toHaveBeenCalled();
+      expect(mockStreamLLM).not.toHaveBeenCalled();
     });
 
     it('returns empty result when callLLM returns an LLMError - does not throw', async () => {
       const candidates = [createMockSearchResult()];
       mockSearchRepos.mockResolvedValue(createMockSearchQueryResult(candidates));
 
-      mockCallLLM.mockResolvedValue({
+      mockStreamLLM.mockResolvedValue({
         error: 'API rate limit exceeded',
         durationMs: 100,
       } as LLMError);
@@ -198,7 +198,7 @@ describe('recommend/recommend', () => {
       // LLM wraps response in code fences
       const llmResponse = '```json\n[{"rank":1,"repoFullName":"owner/repo","htmlUrl":"https://github.com/owner/repo","reasoning":"Good repo."}]\n```';
 
-      mockCallLLM.mockResolvedValue({
+      mockStreamLLM.mockResolvedValue({
         text: llmResponse,
         inputTokens: 50,
         outputTokens: 30,
@@ -217,7 +217,7 @@ describe('recommend/recommend', () => {
       mockSearchRepos.mockResolvedValue(createMockSearchQueryResult(candidates));
 
       // Invalid JSON
-      mockCallLLM.mockResolvedValue({
+      mockStreamLLM.mockResolvedValue({
         text: 'This is not valid JSON at all!',
         inputTokens: 50,
         outputTokens: 10,
@@ -271,7 +271,7 @@ describe('recommend/recommend', () => {
         { rank: 1, repoFullName: 'owner/repo1', htmlUrl: 'https://github.com/owner/repo1', reasoning: 'Best' },
       ]);
 
-      mockCallLLM.mockResolvedValue({
+      mockStreamLLM.mockResolvedValue({
         text: llmResponse,
         inputTokens: 100,
         outputTokens: 30,
@@ -288,7 +288,7 @@ describe('recommend/recommend', () => {
       const candidates = [createMockSearchResult()];
       mockSearchRepos.mockResolvedValue(createMockSearchQueryResult(candidates));
 
-      mockCallLLM.mockResolvedValue({
+      mockStreamLLM.mockResolvedValue({
         text: '[]',
         inputTokens: 10,
         outputTokens: 5,

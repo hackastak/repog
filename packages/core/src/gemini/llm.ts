@@ -11,7 +11,7 @@ const FALLBACK_LLM_MODEL = 'gemini-3.1-flash';
 /**
  * Maximum output tokens for LLM responses.
  */
-const MAX_OUTPUT_TOKENS = 1024;
+const MAX_OUTPUT_TOKENS = 4096;
 
 /**
  * Temperature for LLM responses (lower = more focused).

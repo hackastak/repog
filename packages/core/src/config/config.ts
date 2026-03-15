@@ -266,6 +266,9 @@ export async function loadConfigAsync(): Promise<ConfigData> {
 
 /**
  * Check if RepoG is configured with both required credentials.
+ * Note: This only checks if the configuration exists, not if the credentials
+ * are still valid in the system keychain. Use isConfiguredAsync for a more
+ * thorough check.
  *
  * @returns True if both GitHub PAT and Gemini API key are set
  */
@@ -275,10 +278,10 @@ export function isConfigured(): boolean {
   // The async version should be used in practice
   const store = getStore();
   const configVersion = store.get('configVersion');
+  const dbPath = store.get('dbPath') ?? DEFAULT_DB_PATH;
 
-  // If we're on the new config version, assume configured
-  // The async version should be used for accurate check
-  return configVersion === CONFIG_VERSION;
+  // Basic check: version matches and DB exists
+  return configVersion === CONFIG_VERSION && fs.existsSync(dbPath);
 }
 
 /**

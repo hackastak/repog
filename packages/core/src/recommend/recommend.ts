@@ -1,6 +1,6 @@
 import { loadConfigAsync } from '../config/config.js';
 import { searchRepos, type SearchResult } from '../search/query.js';
-import { callLLM, isLLMError } from '../gemini/llm.js';
+import { streamLLM, isLLMError } from '../gemini/llm.js';
 
 /**
  * Options for repository recommendations.
@@ -53,6 +53,8 @@ export interface RecommendResult {
   outputTokens: number;
   /** Total duration including search + LLM call in milliseconds */
   durationMs: number;
+  /** Error message if any stage failed */
+  error?: string;
 }
 
 /**
@@ -114,23 +116,44 @@ Rank by relevance to the query. Be concise in reasoning.`;
 }
 
 /**
- * Strip markdown code fences from a string.
+ * Strip markdown code fences or non-JSON preamble from a string.
  *
- * LLMs sometimes wrap JSON in markdown code blocks even when instructed not to.
+ * LLMs often wrap JSON in markdown code blocks even when instructed not to,
+ * or add introductory/concluding text before/after the JSON block.
  *
  * @param text - The text to clean
- * @returns Text with code fences removed
+ * @returns Text with only the JSON content
  */
 function stripCodeFences(text: string): string {
-  // Remove ```json or ``` at the start
   let cleaned = text.trim();
+
+  // Strategy 1: Look for content inside ```json ... ``` or ``` ... ``` blocks
+  const codeBlockMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (codeBlockMatch && codeBlockMatch[1]) {
+    return codeBlockMatch[1].trim();
+  }
+
+  // Strategy 2: Look for the first '[' and last ']' if we expect an array
+  const startArray = cleaned.indexOf('[');
+  const endArray = cleaned.lastIndexOf(']');
+  if (startArray !== -1 && endArray !== -1 && endArray > startArray) {
+    return cleaned.slice(startArray, endArray + 1).trim();
+  }
+
+  // Strategy 3: Look for the first '{' and last '}' if it returned a single object
+  const startObj = cleaned.indexOf('{');
+  const endObj = cleaned.lastIndexOf('}');
+  if (startObj !== -1 && endObj !== -1 && endObj > startObj) {
+    return cleaned.slice(startObj, endObj + 1).trim();
+  }
+
+  // Fallback to original trimming logic if no markers found
   if (cleaned.startsWith('```json')) {
     cleaned = cleaned.slice(7);
   } else if (cleaned.startsWith('```')) {
     cleaned = cleaned.slice(3);
   }
 
-  // Remove trailing ```
   if (cleaned.endsWith('```')) {
     cleaned = cleaned.slice(0, -3);
   }
@@ -148,7 +171,12 @@ function stripCodeFences(text: string): string {
 function parseRecommendations(text: string, limit: number): Recommendation[] {
   try {
     const cleaned = stripCodeFences(text);
-    const parsed = JSON.parse(cleaned) as RawRecommendation[];
+    let parsed = JSON.parse(cleaned);
+
+    // If LLM returned a single object instead of an array, wrap it
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      parsed = [parsed];
+    }
 
     if (!Array.isArray(parsed)) {
       return [];
@@ -157,15 +185,17 @@ function parseRecommendations(text: string, limit: number): Recommendation[] {
     const recommendations: Recommendation[] = [];
 
     for (const item of parsed) {
-      // Validate required fields
+      // Validate required fields (more lenient type checking)
       if (
-        typeof item.rank === 'number' &&
+        item.repoFullName &&
         typeof item.repoFullName === 'string' &&
+        item.htmlUrl &&
         typeof item.htmlUrl === 'string' &&
+        item.reasoning &&
         typeof item.reasoning === 'string'
       ) {
         recommendations.push({
-          rank: item.rank,
+          rank: typeof item.rank === 'number' ? item.rank : recommendations.length + 1,
           repoFullName: item.repoFullName,
           htmlUrl: item.htmlUrl,
           reasoning: item.reasoning,
@@ -196,7 +226,8 @@ function parseRecommendations(text: string, limit: number): Recommendation[] {
 function emptyResult(
   query: string,
   candidatesConsidered: number = 0,
-  durationMs: number = 0
+  durationMs: number = 0,
+  error?: string
 ): RecommendResult {
   return {
     recommendations: [],
@@ -205,6 +236,7 @@ function emptyResult(
     inputTokens: 0,
     outputTokens: 0,
     durationMs,
+    error,
   };
 }
 
@@ -256,17 +288,26 @@ export async function recommendRepos(
     const prompt = buildRecommendPrompt(query, candidates, limit);
 
     // Step 3: Call the LLM
-    const llmResult = await callLLM(config.geminiKey, prompt, SYSTEM_PROMPT);
+    const llmResult = await streamLLM(config.geminiKey, prompt, SYSTEM_PROMPT);
 
     const durationMs = performance.now() - startTime;
 
     // Step 4: Handle LLM error
     if (isLLMError(llmResult)) {
-      return emptyResult(query, candidates.length, durationMs);
+      return emptyResult(query, candidates.length, durationMs, llmResult.error);
     }
 
     // Step 5: Parse recommendations
     const recommendations = parseRecommendations(llmResult.text, limit);
+
+    if (recommendations.length === 0 && llmResult.text) {
+      return emptyResult(
+        query,
+        candidates.length,
+        durationMs,
+        'Failed to parse LLM response as valid recommendations'
+      );
+    }
 
     return {
       recommendations,
@@ -276,8 +317,9 @@ export async function recommendRepos(
       outputTokens: llmResult.outputTokens,
       durationMs,
     };
-  } catch {
+  } catch (err) {
     // Never throw - return empty result
-    return emptyResult(query, 0, performance.now() - startTime);
+    const errorMessage = err instanceof Error ? err.message : 'Unknown recommendation error';
+    return emptyResult(query, 0, performance.now() - startTime, errorMessage);
   }
 }

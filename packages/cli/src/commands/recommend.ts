@@ -2,7 +2,7 @@ import type { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
 import {
-  isConfigured,
+  isConfiguredAsync,
   loadConfig,
   getDb,
   recommendRepos,
@@ -117,8 +117,11 @@ function renderResults(result: RecommendResult, options: RecommendCommandOptions
 /**
  * Render the empty state message.
  */
-function renderEmptyState(query: string): void {
+function renderEmptyState(query: string, error?: string): void {
   console.log(`\n${chalk.yellow(`No recommendations found for: "${query}"`)}`);
+  if (error) {
+    console.log(chalk.red(`  Reason: ${error}`));
+  }
   console.log('');
   console.log(
     chalk.dim(
@@ -132,7 +135,7 @@ function renderEmptyState(query: string): void {
  */
 async function runRecommend(query: string, options: RecommendCommandOptions): Promise<void> {
   // Check if configured
-  if (!isConfigured()) {
+  if (!(await isConfiguredAsync())) {
     console.log(chalk.red('Run `repog init` first.'));
     process.exit(1);
   }
@@ -189,7 +192,7 @@ async function runRecommend(query: string, options: RecommendCommandOptions): Pr
     process.off('SIGTERM', handleSignal);
 
     if (result.recommendations.length === 0) {
-      renderEmptyState(query);
+      renderEmptyState(query, result.error);
     } else {
       renderResults(result, options);
     }

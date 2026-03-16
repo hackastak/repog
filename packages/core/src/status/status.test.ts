@@ -176,6 +176,24 @@ describe('getStatus', () => {
     expect(result.sync.lastSyncStatus).toBeNull();
   });
 
+  it('falls back to repos table for sync status if sync_state is empty', async () => {
+    // Populate DB with test data in repos but NO sync_state
+    const db = new Database(dbPath);
+    
+    // Insert repos with synced_at
+    db.prepare(`
+      INSERT INTO repos (github_id, owner, name, full_name, url, pushed_at, synced_at)
+      VALUES 
+        (1, 'me', 'my-repo', 'me/my-repo', 'http://u1', '2023-01-01', '2023-01-05T12:00:00.000Z')
+    `).run();
+    db.close();
+
+    const result = await getStatus();
+
+    expect(result.sync.lastSyncStatus).toBe('completed');
+    expect(result.sync.lastSyncedAt).toBe('2023-01-05T12:00:00.000Z');
+  });
+
   it('handles null embed stats', async () => {
     // Empty DB, no repos embedded
     const result = await getStatus();

@@ -221,7 +221,7 @@ export async function* runEmbedPipeline(
 
     // Prepare update statement for embedded_hash
     const updateEmbeddedHash = db.prepare(
-      `UPDATE repos SET embedded_hash = pushed_at_hash, embedded_at = datetime('now') WHERE id = ?`
+      `UPDATE repos SET embedded_hash = pushed_at_hash, embedded_at = ? WHERE id = ?`
     );
 
     // Process each batch
@@ -262,7 +262,7 @@ export async function* runEmbedPipeline(
 
               // Check if repo is fully processed
               if (counts.processed === counts.total) {
-                updateEmbeddedHash.run(chunk.repoId);
+                updateEmbeddedHash.run(new Date().toISOString(), chunk.repoId);
               }
             }
           }

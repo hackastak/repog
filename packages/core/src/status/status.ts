@@ -108,7 +108,16 @@ export async function getStatus(): Promise<StatusResult> {
         ORDER BY started_at DESC
         LIMIT 1
       `).get() as { status: string; started_at: string } | undefined;
-      return row;
+
+      if (row) return row;
+
+      // Fallback: check the latest synced_at from repos table if sync_state is empty
+      const fallbackRow = db.prepare('SELECT MAX(synced_at) as started_at FROM repos').get() as { started_at: string | null };
+      if (fallbackRow.started_at) {
+        return { status: 'completed', started_at: fallbackRow.started_at };
+      }
+
+      return undefined;
     })(),
 
     // Embed stats - chunks

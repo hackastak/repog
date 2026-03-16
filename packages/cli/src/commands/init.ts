@@ -5,7 +5,9 @@ import { input, password, confirm } from '@inquirer/prompts';
 import {
   saveConfig,
   loadConfig,
+  loadConfigAsync,
   isConfigured,
+  isConfiguredAsync,
   initDb,
   validateGitHubToken,
   validateGeminiKey,
@@ -72,7 +74,7 @@ async function runInit(options: InitOptions): Promise<void> {
 
   // Check if already configured
   if (isConfigured() && !options.force) {
-    const config = loadConfig();
+    const config = await loadConfigAsync();
     console.log(chalk.yellow('RepoG is already configured.'));
     console.log(`  GitHub: ${config.githubPat ? chalk.green('configured') : chalk.red('not set')}`);
     console.log(`  Gemini: ${config.geminiKey ? chalk.green('configured') : chalk.red('not set')}`);

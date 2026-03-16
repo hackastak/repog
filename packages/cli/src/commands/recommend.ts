@@ -213,7 +213,7 @@ export function register(program: Command): void {
   program
     .command('recommend <query>')
     .description('Get AI-powered repository recommendations for a query')
-    .option('-l, --limit <number>', 'Number of recommendations to return', parseInt, 3)
+    .option('-l, --limit <number>', 'Number of recommendations to return', (v) => parseInt(v, 10), 3)
     .option('--language <lang>', 'Filter by primary language')
     .option('--starred', 'Only recommend from starred repositories')
     .option('--owned', 'Only recommend from owned repositories')

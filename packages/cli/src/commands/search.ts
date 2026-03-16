@@ -184,7 +184,7 @@ export function register(program: Command): void {
   program
     .command('search <query>')
     .description('Semantic search across your repositories')
-    .option('-l, --limit <number>', 'Maximum results to return', parseInt, 3)
+    .option('-l, --limit <number>', 'Maximum results to return', (v) => parseInt(v, 10), 3)
     .option('--language <lang>', 'Filter by primary language')
     .option('--starred', 'Only search starred repositories')
     .option('--owned', 'Only search owned repositories')

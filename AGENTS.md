@@ -113,3 +113,7 @@ This project uses native modules (`better-sqlite3`, `keytar`).
     - `fix: resolve issue with API`
     - `docs: update readme`
     - `chore: update dependencies`
+
+## Strict Constraints
+- **NO AUTOMATIC COMMITS:** Under no circumstances should the agent execute `git commit`. The agent may stage changes using `git add`, but the final commit must be performed by the user manually.
+

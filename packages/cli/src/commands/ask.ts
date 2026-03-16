@@ -183,7 +183,7 @@ export function register(program: Command): void {
     .command('ask <question>')
     .description('Ask a question about your repositories using AI')
     .option('-r, --repo <name>', 'Scope question to a specific repository (owner/repo)')
-    .option('-l, --limit <number>', 'Number of context chunks to retrieve', parseInt, 10)
+    .option('-l, --limit <number>', 'Number of context chunks to retrieve', (v) => parseInt(v, 10), 10)
     .action(async (question: string, options: AskCommandOptions) => {
       await runAsk(question, options);
     });

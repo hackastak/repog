@@ -58,16 +58,6 @@ export interface RecommendResult {
 }
 
 /**
- * Raw recommendation item from LLM JSON response.
- */
-interface RawRecommendation {
-  rank?: number;
-  repoFullName?: string;
-  htmlUrl?: string;
-  reasoning?: string;
-}
-
-/**
  * System prompt for the recommendation LLM.
  */
 const SYSTEM_PROMPT = `You are a developer tool assistant. Your job is to recommend the most relevant GitHub repositories from a provided list based on the user's query. You must respond with valid JSON only — no markdown, no explanation outside the JSON.`;

@@ -4,10 +4,8 @@ import ora from 'ora';
 import { input, password, confirm } from '@inquirer/prompts';
 import {
   saveConfig,
-  loadConfig,
   loadConfigAsync,
   isConfigured,
-  isConfiguredAsync,
   initDb,
   validateGitHubToken,
   validateGeminiKey,

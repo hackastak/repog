@@ -1,0 +1,29 @@
+{
+  "name": "repog-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "postinstall": "pnpm rebuild better-sqlite3 && pnpm rebuild keytar",
+    "build": "pnpm -r build",
+    "dev": "pnpm -r dev",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "test:ci": "pnpm lint && pnpm typecheck && pnpm --filter @repog/core test:coverage",
+    "typecheck": "pnpm -r exec tsc --noEmit",
+    "clean": "pnpm -r clean"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["better-sqlite3", "keytar"]
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.16.0",
+    "eslint": "^9.16.0",
+    "eslint-config-prettier": "^9.1.0",
+    "typescript-eslint": "^8.18.0"
+  },
+  "engines": {
+    "node": "^22.0.0",
+    "pnpm": ">=8.0.0"
+  }
+}

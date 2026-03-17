@@ -1,0 +1,56 @@
+{
+  "name": "repog",
+  "version": "0.1.0",
+  "description": "AI-powered knowledge base for your GitHub repositories",
+  "keywords": [
+    "github",
+    "ai",
+    "cli",
+    "knowledge-base",
+    "embeddings",
+    "rag",
+    "gemini"
+  ],
+  "homepage": "https://github.com/hackastak/RepoG",
+  "bugs": {
+    "url": "https://github.com/hackastak/RepoG/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hackastak/RepoG.git"
+  },
+  "license": "MIT",
+  "author": "SMILESTACKLABS",
+  "type": "module",
+  "bin": {
+    "repog": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "postbuild": "chmod +x dist/index.js",
+    "dev": "tsup --watch",
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "pnpm build && pnpm typecheck"
+  },
+  "dependencies": {
+    "@repog/core": "workspace:*",
+    "better-sqlite3": "^12.6.2",
+    "keytar": "^7.9.0",
+    "sqlite-vec": "^0.1.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

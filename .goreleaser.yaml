@@ -1,0 +1,76 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: repog-darwin
+    main: ./cmd/repog
+    binary: repog
+    env:
+      - CGO_ENABLED=1
+      - CGO_CFLAGS=-Wno-deprecated-declarations
+    goos: [darwin]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+  - id: repog-linux-amd64
+    main: ./cmd/repog
+    binary: repog
+    env:
+      - CGO_ENABLED=1
+    goos: [linux]
+    goarch: [amd64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+    skip: '{{ ne .Runtime.Goos "linux" }}'
+
+  - id: repog-linux-arm64
+    main: ./cmd/repog
+    binary: repog
+    env:
+      - CGO_ENABLED=1
+    goos: [linux]
+    goarch: [arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+    skip: '{{ ne .Runtime.Goos "linux" }}'
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: "checksums.txt"
+
+release:
+  github:
+    owner: hackastak
+    name: repog
+
+brews:
+  - name: repog
+    repository:
+      owner: hackastak
+      name: homebrew-tap
+      branch: main
+    commit_author:
+      name: hackastak
+      email: your@email.com
+    directory: Formula
+    description: "AI-powered knowledge base for your GitHub repositories"
+    homepage: "https://github.com/hackastak/repog"
+    license: "MIT"
+    test: |
+      system "#{bin}/repog --help"

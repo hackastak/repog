@@ -36,3 +36,4 @@ coverage/
 
 # RepoG data directory
 .repog/
+cgo-headers/

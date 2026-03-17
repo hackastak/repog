@@ -10,18 +10,17 @@ RepoG is a CLI tool that syncs your GitHub repositories to a local knowledge bas
 
 ## Prerequisites
 
-- **Node.js**: v22.0.0 or higher
+- **Go**: 1.23 or higher
+- **C Compiler**: GCC or Clang (required for SQLite)
 - **GitHub Account**: A fine-grained Personal Access Token (PAT)
 - **Google AI Studio Account**: A Gemini API key
 
 ## Installation
 
-### Global Install (Recommended)
-
-Once published:
+### From Source (Recommended)
 
 ```bash
-npm install -g repog
+go install github.com/hackastak/repog/cmd/repog@latest
 ```
 
 ### Local Development
@@ -32,16 +31,14 @@ npm install -g repog
    cd RepoG
    ```
 
-2. Install dependencies:
+2. Build:
    ```bash
-   nvm use 22
-   pnpm install
+   go build -o repog ./cmd/repog
    ```
 
-3. Build and link:
+3. Install locally:
    ```bash
-   pnpm build
-   cd packages/cli && npm link
+   go install ./cmd/repog
    ```
 
 ## Setup
@@ -178,17 +175,18 @@ RepoG respects the GitHub API rate limit of 5,000 requests per hour for authenti
 ## Development
 
 ```bash
-# Install dependencies
-pnpm install
-
-# Build all packages
-pnpm build
+# Build
+go build -o repog ./cmd/repog
 
 # Run tests
-pnpm test
+go test ./...
 
-# Lint code
-pnpm lint
+# Run tests with coverage
+go test -coverprofile=coverage.out ./...
+go tool cover -html=coverage.out
+
+# Lint (requires golangci-lint)
+golangci-lint run
 ```
 
 ## License

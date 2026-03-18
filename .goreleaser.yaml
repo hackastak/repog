@@ -36,6 +36,7 @@ builds:
     binary: repog
     env:
       - CGO_ENABLED=1
+      - CC=aarch64-linux-gnu-gcc
     goos: [linux]
     goarch: [arm64]
     flags:

@@ -66,6 +66,7 @@ brews:
       owner: hackastak
       name: homebrew-tap
       branch: main
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     commit_author:
       name: hackastak
       email: your@email.com

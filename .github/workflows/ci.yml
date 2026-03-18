@@ -35,7 +35,7 @@ jobs:
       - name: Coverage check
         run: |
           go tool cover -func=coverage.out | grep total | \
-          awk '{gsub(/%/,"",$3); if ($3 < 80) {print "Coverage below 80%: " $3"%"; exit 1}}'
+          awk '{gsub(/%/,"",$3); if ($3 < 80) {print "Coverage below 50%: " $3"%"; exit 1}}'
 
   release:
     name: Release

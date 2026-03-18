@@ -58,6 +58,7 @@ release:
   github:
     owner: hackastak
     name: repog
+  replace_existing_artifacts: true
 
 brews:
   - name: repog

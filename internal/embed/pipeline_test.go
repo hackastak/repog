@@ -125,17 +125,25 @@ func TestRunEmbedPipeline_SkipsAlreadyEmbeddedRepo(t *testing.T) {
 		t.Fatalf("Failed to insert repo: %v", err)
 	}
 
-	// Get repo ID and insert chunk
+	// Get repo ID and insert chunk with embedding
 	var repoID int64
 	err = database.QueryRow("SELECT id FROM repos WHERE full_name = 'user/repo1'").Scan(&repoID)
 	if err != nil {
 		t.Fatalf("Failed to get repo ID: %v", err)
 	}
 
-	_, err = database.Exec("INSERT INTO chunks (repo_id, chunk_type, content) VALUES (?, 'metadata', ?)",
+	result, err := database.Exec("INSERT INTO chunks (repo_id, chunk_type, content) VALUES (?, 'metadata', ?)",
 		repoID, `{"full_name":"user/repo1"}`)
 	if err != nil {
 		t.Fatalf("Failed to insert chunk: %v", err)
+	}
+
+	// Insert embedding for the chunk so it's considered fully embedded
+	chunkID, _ := result.LastInsertId()
+	_, err = database.Exec("INSERT INTO chunk_embeddings (chunk_id, embedding) VALUES (?, ?)",
+		chunkID, gemini.Float32SliceToBytes(makeTestEmbedding(0.5)))
+	if err != nil {
+		t.Fatalf("Failed to insert chunk embedding: %v", err)
 	}
 
 	// Track API calls
@@ -517,8 +525,13 @@ func TestRunEmbedPipeline_DoneEventHasCorrectTotals(t *testing.T) {
 	_ = database.QueryRow("SELECT id FROM repos WHERE full_name = 'user/repo1'").Scan(&repo1ID)
 	_ = database.QueryRow("SELECT id FROM repos WHERE full_name = 'user/repo2'").Scan(&repo2ID)
 
-	_, _ = database.Exec("INSERT INTO chunks (repo_id, chunk_type, content) VALUES (?, 'metadata', ?)", repo1ID, `{"full_name":"user/repo1"}`)
+	result1, _ := database.Exec("INSERT INTO chunks (repo_id, chunk_type, content) VALUES (?, 'metadata', ?)", repo1ID, `{"full_name":"user/repo1"}`)
 	_, _ = database.Exec("INSERT INTO chunks (repo_id, chunk_type, content) VALUES (?, 'metadata', ?)", repo2ID, `{"full_name":"user/repo2"}`)
+
+	// Insert embedding for repo1's chunk so it's considered fully embedded
+	chunk1ID, _ := result1.LastInsertId()
+	_, _ = database.Exec("INSERT INTO chunk_embeddings (chunk_id, embedding) VALUES (?, ?)",
+		chunk1ID, gemini.Float32SliceToBytes(makeTestEmbedding(0.5)))
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp := map[string]interface{}{

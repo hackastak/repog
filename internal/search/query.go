@@ -134,8 +134,11 @@ func SearchRepos(ctx context.Context, db *sql.DB, apiKey, query string, filters 
 	}
 	defer func() { _ = rows.Close() }()
 
-	// Collect results and deduplicate
-	seenRepos := make(map[string]SearchResult)
+	// Collect results and deduplicate by repo+chunk_type (keep best of each type per repo)
+	// Key: "repo_full_name|chunk_type"
+	seenChunks := make(map[string]SearchResult)
+	// Track best similarity per repo for sorting
+	bestRepoSimilarity := make(map[string]float64)
 
 	for rows.Next() {
 		var r SearchResult
@@ -157,21 +160,45 @@ func SearchRepos(ctx context.Context, db *sql.DB, apiKey, query string, filters 
 
 		result.TotalConsidered++
 
-		// Keep highest similarity per repo
-		if _, exists := seenRepos[r.RepoFullName]; !exists {
-			seenRepos[r.RepoFullName] = r
+		// Keep highest similarity chunk of each type per repo
+		key := r.RepoFullName + "|" + r.ChunkType
+		if existing, exists := seenChunks[key]; !exists || r.Similarity > existing.Similarity {
+			seenChunks[key] = r
+		}
+
+		// Track best similarity for this repo
+		if r.Similarity > bestRepoSimilarity[r.RepoFullName] {
+			bestRepoSimilarity[r.RepoFullName] = r.Similarity
 		}
 	}
 
-	// Convert to slice, sort by similarity (descending), and cap at limit
-	for _, r := range seenRepos {
-		result.Results = append(result.Results, r)
+	// Group chunks by repo, sort repos by best similarity, then cap at limit repos
+	repoChunks := make(map[string][]SearchResult)
+	for _, r := range seenChunks {
+		repoChunks[r.RepoFullName] = append(repoChunks[r.RepoFullName], r)
 	}
-	sort.Slice(result.Results, func(i, j int) bool {
-		return result.Results[i].Similarity > result.Results[j].Similarity
+
+	// Sort repos by best similarity
+	repos := make([]string, 0, len(repoChunks))
+	for repo := range repoChunks {
+		repos = append(repos, repo)
+	}
+	sort.Slice(repos, func(i, j int) bool {
+		return bestRepoSimilarity[repos[i]] > bestRepoSimilarity[repos[j]]
 	})
-	if len(result.Results) > limit {
-		result.Results = result.Results[:limit]
+
+	// Cap at limit repos, then flatten all chunks from those repos
+	if len(repos) > limit {
+		repos = repos[:limit]
+	}
+	for _, repo := range repos {
+		// Sort chunks within repo: metadata first, then readme, then file_tree
+		chunks := repoChunks[repo]
+		sort.Slice(chunks, func(i, j int) bool {
+			order := map[string]int{"metadata": 0, "readme": 1, "file_tree": 2}
+			return order[chunks[i].ChunkType] < order[chunks[j].ChunkType]
+		})
+		result.Results = append(result.Results, chunks...)
 	}
 
 	return result, nil

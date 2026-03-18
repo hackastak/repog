@@ -29,7 +29,7 @@ var (
 )
 
 func init() {
-	embedCmd.Flags().BoolVar(&embedIncludeFileTree, "include-file-tree", false, "Also embed file_tree chunks")
+	embedCmd.Flags().BoolVar(&embedIncludeFileTree, "include-file-tree", true, "Include file_tree chunks in embeddings (default true)")
 	embedCmd.Flags().BoolVar(&embedVerbose, "verbose", false, "Show detailed progress")
 	embedCmd.Flags().IntVar(&embedBatchSize, "batch-size", 20, "Embedding batch size (max 100)")
 }

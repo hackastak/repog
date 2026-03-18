@@ -798,6 +798,113 @@ func TestIngestRepos_FullTreeSyncsWhenFileTreeMissing(t *testing.T) {
 	}
 }
 
+func TestIngestRepos_FullTreeAfterRegularSync(t *testing.T) {
+	// This test simulates the user's exact scenario:
+	// 1. First sync without --full-tree (only metadata + readme)
+	// 2. Second sync with --full-tree (should fetch file_tree even though repo is unchanged)
+	repo := makeTestRepo(6, "user/two-sync-repo", "user", "two-sync-repo")
+
+	// Short readme so file_tree won't be auto-fetched on first sync
+	shortReadme := base64.StdEncoding.EncodeToString([]byte("# Short"))
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/user/repos", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]github.Repo{repo})
+	})
+	mux.HandleFunc("/repos/user/two-sync-repo/readme", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"content":  shortReadme,
+			"encoding": "base64",
+		})
+	})
+	mux.HandleFunc("/repos/user/two-sync-repo/git/trees/main", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"tree": []map[string]string{
+				{"path": "README.md", "type": "blob"},
+				{"path": "main.go", "type": "blob"},
+			},
+		})
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	github.SetDefaultBaseURL(server.URL)
+	defer github.ResetDefaultBaseURL()
+
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	database, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to open database: %v", err)
+	}
+	defer func() { _ = db.Close(database) }()
+
+	ctx := context.Background()
+
+	// FIRST SYNC: without --full-tree
+	eventCh := IngestRepos(ctx, IngestOptions{
+		IncludeOwned:   true,
+		IncludeStarred: false,
+		FullTree:       false, // No full tree on first sync
+		DB:             database,
+		GitHubPAT:      "test-token",
+	})
+
+	for range eventCh {
+	}
+
+	// Verify repo was synced but NO file_tree chunk (short readme)
+	var repoID int64
+	err = database.QueryRow("SELECT id FROM repos WHERE full_name = 'user/two-sync-repo'").Scan(&repoID)
+	if err != nil {
+		t.Fatalf("Repo should exist after first sync: %v", err)
+	}
+
+	var fileTreeCount int
+	err = database.QueryRow("SELECT COUNT(*) FROM chunks WHERE repo_id = ? AND chunk_type = 'file_tree'", repoID).Scan(&fileTreeCount)
+	if err != nil {
+		t.Fatalf("Failed to query chunks: %v", err)
+	}
+	if fileTreeCount != 0 {
+		t.Fatalf("Expected NO file_tree chunk after first sync (short readme), got %d", fileTreeCount)
+	}
+
+	// SECOND SYNC: with --full-tree
+	eventCh = IngestRepos(ctx, IngestOptions{
+		IncludeOwned:   true,
+		IncludeStarred: false,
+		FullTree:       true, // Full tree on second sync
+		DB:             database,
+		GitHubPAT:      "test-token",
+	})
+
+	var wasSkipped, wasProcessed bool
+	for event := range eventCh {
+		if event.Type == "skip" && event.Repo == "user/two-sync-repo" {
+			wasSkipped = true
+		}
+		if event.Type == "repo" && event.Repo == "user/two-sync-repo" {
+			wasProcessed = true
+		}
+	}
+
+	if wasSkipped {
+		t.Error("Repo should NOT be skipped on second sync with --full-tree when file_tree is missing")
+	}
+	if !wasProcessed {
+		t.Error("Repo should be processed on second sync with --full-tree")
+	}
+
+	// Verify file_tree chunk NOW exists
+	err = database.QueryRow("SELECT COUNT(*) FROM chunks WHERE repo_id = ? AND chunk_type = 'file_tree'", repoID).Scan(&fileTreeCount)
+	if err != nil {
+		t.Fatalf("Failed to query chunks after second sync: %v", err)
+	}
+	if fileTreeCount != 1 {
+		t.Errorf("Expected 1 file_tree chunk after second sync with --full-tree, got %d", fileTreeCount)
+	}
+}
+
 func TestIngestRepos_HandlesAPIError(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/user/repos", func(w http.ResponseWriter, r *http.Request) {

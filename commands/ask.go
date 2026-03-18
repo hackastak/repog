@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -39,6 +40,12 @@ func runAsk(cmd *cobra.Command, args []string) error {
 	cyan := color.New(color.FgCyan).SprintFunc()
 	dim := color.New(color.Faint).SprintFunc()
 	bold := color.New(color.Bold).SprintFunc()
+
+	// Validate repo format if provided
+	if askRepo != "" && !strings.Contains(askRepo, "/") {
+		fmt.Println(red("Invalid repository format. Use owner/repo (e.g., hackastak/repog)"))
+		os.Exit(1)
+	}
 
 	// Load config
 	cfg, err := config.LoadConfig()

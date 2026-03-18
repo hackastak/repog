@@ -93,13 +93,22 @@ func RunEmbedPipeline(ctx context.Context, opts EmbedOptions) <-chan EmbedEvent 
 		// Identify repos to skip vs process
 		var reposToProcess []repoRecord
 		for _, repo := range repos {
-			if repo.EmbeddedHash.Valid && repo.EmbeddedHash.String == repo.PushedAtHash {
-				// Skip - already embedded
-				chunkTypeFilter := ""
-				if !opts.IncludeFileTree {
-					chunkTypeFilter = " AND chunk_type != 'file_tree'"
-				}
+			// Build chunk type filter
+			chunkTypeFilter := ""
+			if !opts.IncludeFileTree {
+				chunkTypeFilter = " AND chunk_type != 'file_tree'"
+			}
 
+			// Check if there are any chunks without embeddings
+			var unembeddedCount int
+			_ = opts.DB.QueryRow(`
+				SELECT COUNT(*) FROM chunks c
+				WHERE c.repo_id = ? `+chunkTypeFilter+`
+				AND NOT EXISTS (SELECT 1 FROM chunk_embeddings ce WHERE ce.chunk_id = c.id)
+			`, repo.ID).Scan(&unembeddedCount)
+
+			if unembeddedCount == 0 && repo.EmbeddedHash.Valid && repo.EmbeddedHash.String == repo.PushedAtHash {
+				// Skip - all chunks already embedded
 				var count int
 				_ = opts.DB.QueryRow(
 					"SELECT COUNT(*) FROM chunks WHERE repo_id = ?"+chunkTypeFilter,
@@ -127,7 +136,7 @@ func RunEmbedPipeline(ctx context.Context, opts EmbedOptions) <-chan EmbedEvent 
 			return
 		}
 
-		// Collect chunks from repos to process
+		// Collect un-embedded chunks from repos to process
 		var chunks []chunkRecord
 		for _, repo := range reposToProcess {
 			chunkTypeFilter := ""
@@ -135,10 +144,12 @@ func RunEmbedPipeline(ctx context.Context, opts EmbedOptions) <-chan EmbedEvent 
 				chunkTypeFilter = " AND chunk_type != 'file_tree'"
 			}
 
-			chunkRows, err := opts.DB.Query(
-				"SELECT id, repo_id, content FROM chunks WHERE repo_id = ?"+chunkTypeFilter,
-				repo.ID,
-			)
+			// Only get chunks that don't have embeddings yet
+			chunkRows, err := opts.DB.Query(`
+				SELECT c.id, c.repo_id, c.content FROM chunks c
+				WHERE c.repo_id = ? `+chunkTypeFilter+`
+				AND NOT EXISTS (SELECT 1 FROM chunk_embeddings ce WHERE ce.chunk_id = c.id)
+			`, repo.ID)
 			if err != nil {
 				continue
 			}

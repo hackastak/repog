@@ -304,7 +304,7 @@ func TestSearchRepos_LimitRespectedAfterDeduplication(t *testing.T) {
 	}
 }
 
-func TestSearchRepos_DeduplicatesChunksPerRepo(t *testing.T) {
+func TestSearchRepos_ReturnsAllChunkTypesPerRepo(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 	database, err := db.Open(dbPath)
 	if err != nil {
@@ -355,9 +355,19 @@ func TestSearchRepos_DeduplicatesChunksPerRepo(t *testing.T) {
 		t.Fatalf("SearchRepos failed: %v", err)
 	}
 
-	// Verify only 1 result returned (deduplicated by repo)
-	if len(searchResult.Results) != 1 {
-		t.Errorf("Expected 1 result (deduplicated), got %d", len(searchResult.Results))
+	// Verify 2 results returned (one per chunk type: metadata + readme)
+	// Search now returns all chunk types per repo for better RAG context
+	if len(searchResult.Results) != 2 {
+		t.Errorf("Expected 2 results (all chunk types per repo), got %d", len(searchResult.Results))
+	}
+
+	// Verify both chunk types are present
+	chunkTypes := make(map[string]bool)
+	for _, r := range searchResult.Results {
+		chunkTypes[r.ChunkType] = true
+	}
+	if !chunkTypes["metadata"] || !chunkTypes["readme"] {
+		t.Errorf("Expected both metadata and readme chunks, got: %v", chunkTypes)
 	}
 }
 

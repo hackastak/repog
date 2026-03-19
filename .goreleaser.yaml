@@ -17,6 +17,7 @@ builds:
       - -trimpath
     ldflags:
       - -s -w -X main.version={{.Version}}
+    skip: '{{ ne .Runtime.Goos "darwin" }}'
 
   - id: repog-linux-amd64
     main: ./cmd/repog

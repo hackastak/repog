@@ -3,192 +3,199 @@
 AI-powered knowledge base for your GitHub repositories.
 
 [![CI](https://github.com/hackastak/RepoG/actions/workflows/ci.yml/badge.svg)](https://github.com/hackastak/RepoG/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/hackastak/repog)](https://goreportcard.com/report/github.com/hackastak/repog)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## What is RepoG?
 
-RepoG is a CLI tool that syncs your GitHub repositories to a local knowledge base, generates embeddings for the code, and allows you to perform semantic search, ask questions, and get AI-powered recommendations across your entire codebase.
+RepoG is a CLI tool that syncs your GitHub repositories to a local knowledge base, generates vector embeddings, and enables semantic search, Q&A, and AI-powered recommendations across your entire codebase.
 
-## Prerequisites
-
-- **Go**: 1.23 or higher
-- **C Compiler**: GCC or Clang (required for SQLite)
-- **GitHub Account**: A fine-grained Personal Access Token (PAT)
-- **Google AI Studio Account**: A Gemini API key
+**Key Features:**
+- Sync owned and starred repositories to a local SQLite database
+- Generate vector embeddings using Google Gemini
+- Semantic search across all your code using natural language
+- Ask questions and get AI-synthesized answers (RAG)
+- Get repository recommendations for specific tasks
+- Summarize repositories with AI
 
 ## Installation
 
-### From Source (Recommended)
+### Homebrew (macOS)
+
+```bash
+brew install hackastak/tap/repog
+```
+
+### Download Binary
+
+Download the latest release for your platform from the [Releases page](https://github.com/hackastak/repog/releases).
+
+### From Source
+
+Requires Go 1.22+ and a C compiler (GCC or Clang) for CGO.
 
 ```bash
 go install github.com/hackastak/repog/cmd/repog@latest
 ```
 
-### Local Development
+## Quick Start
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/hackastak/RepoG.git
-   cd RepoG
-   ```
+### 1. Get Your API Keys
 
-2. Build:
-   ```bash
-   go build -o repog ./cmd/repog
-   ```
+You'll need two API keys:
 
-3. Install locally:
-   ```bash
-   go install ./cmd/repog
-   ```
+**GitHub Personal Access Token (PAT)**
+1. Go to [GitHub Settings > Developer settings > Personal access tokens > Fine-grained tokens](https://github.com/settings/tokens?type=beta)
+2. Create a new token with:
+   - **Repository access**: All repositories (or select specific ones)
+   - **Permissions**: `Contents: Read-only`, `Metadata: Read-only`
 
-## Setup
+**Google Gemini API Key**
+1. Go to [Google AI Studio](https://aistudio.google.com/apikey)
+2. Create a new API key
 
-Run the initialization command to set up your credentials:
+### 2. Initialize RepoG
 
 ```bash
 repog init
 ```
 
-> **GitHub Token Permissions**
-> You need a fine-grained Personal Access Token with the following permissions:
-> - **Repository access**: All repositories (or select specific ones)
-> - **Repository permissions**:
->   - `Contents`: Read-only
->   - `Metadata`: Read-only
+This will prompt you for your API keys and store them securely in your system keychain.
 
-## Usage
-
-### Sync Repositories
-Download repository metadata and file content to the local database.
+### 3. Sync Your Repositories
 
 ```bash
 repog sync --owned --starred
-# Syncing repositories...
-# ✔ Found 142 repositories (23 owned, 119 starred)
-# ✔ Synced metadata for 142 repos
-# ✔ Downloaded content for 5 new repos
 ```
 
-### Generate Embeddings
-Process the synced code into vector embeddings for AI search.
+### 4. Generate Embeddings
 
 ```bash
 repog embed
-# Generating embeddings...
-# ✔ Processed 150 chunks from hackastak/RepoG
-# ✔ Processed 89 chunks from hackastak/dotfiles
-# ✔ Embedded 239 total chunks
 ```
 
-### Semantic Search
-Search your codebase using natural language concepts, not just keywords.
+### 5. Start Searching
 
 ```bash
-repog search "machine learning frameworks"
-# Results for "machine learning frameworks":
-# 1. hackastak/ml-experiments (0.89)
-#    - experiments/tf_setup.py: Imports TensorFlow and configures GPU
-# 2. hackastak/notes (0.82)
-#    - ml/frameworks.md: Comparison of PyTorch vs TensorFlow
+repog search "authentication middleware"
+repog ask "Which repos use PostgreSQL?"
+repog recommend "building a CLI tool"
 ```
 
-### Ask Questions (RAG)
-Ask complex questions that require synthesizing information from multiple files.
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `repog init` | Configure API keys and initialize the database |
+| `repog sync` | Sync repository metadata and content |
+| `repog embed` | Generate vector embeddings for synced repos |
+| `repog search <query>` | Semantic search across your codebase |
+| `repog ask <question>` | Ask questions with AI-synthesized answers |
+| `repog recommend <task>` | Get repository recommendations |
+| `repog summarize <repo>` | AI summary of a specific repository |
+| `repog status` | View knowledge base statistics |
+
+### Sync Options
 
 ```bash
-repog ask "Which of my repos uses Redis?"
-# Based on your repositories, the following projects use Redis:
-# - `backend-api`: Uses `ioredis` for caching session data (src/lib/cache.ts)
-# - `worker-queue`: Uses Redis for job queue management via BullMQ (src/queue.ts)
+repog sync --owned           # Sync only your own repositories
+repog sync --starred         # Sync only starred repositories
+repog sync --owned --starred # Sync both (default)
 ```
-
-### Get Recommendations
-Find repositories relevant to a specific task or technology.
-
-```bash
-repog recommend "building a REST API"
-# Recommended repositories for "building a REST API":
-# 1. hackastak/express-starter - A boilerplate for Express.js APIs
-# 2. hackastak/fastify-demo - Example of a high-performance Fastify server
-# 3. hackastak/todo-api - A simple REST API reference implementation
-```
-
-### Summarize a Repository
-Get a high-level AI summary of what a specific repository does.
-
-```bash
-repog summarize hackastak/RepoG
-# Summary for hackastak/RepoG:
-# RepoG is a CLI tool for AI-powered knowledge management of GitHub repositories.
-# It features a monorepo structure with a core logic package and a CLI interface.
-# Key technologies include TypeScript, SQLite for local storage, and Google's Gemini API for embeddings and reasoning.
-```
-
-### Check Status
-View the current state of your local knowledge base.
-
-```bash
-repog status
-# RepoG Status
-# ─────────────────────────────────────────────
-#
-#   Repositories
-#     Total:                       142
-#     Owned:                        23
-#     Starred:                     119
-#     Embedded:                    142
-#     Pending embed:                 0
-#
-#   Knowledge Base
-#     Chunks:                    12,450
-#     Embeddings:                12,450
-#
-#   Last Sync
-#     Status:                completed
-#     Date:                2 hours ago
-#
-#   Last Embed
-#     Date:                2 hours ago
-#
-#   GitHub API
-#     Remaining:         4,982 / 5,000
-#     Resets:               58 minutes
-#
-#   Database
-#     Path:          ~/.repog/repog.db
-#     Size:                    45.2 MB
-#
-# ─────────────────────────────────────────────
-# Generated at 14:30:00
-```
-
-## GitHub API Rate Limits
-RepoG respects the GitHub API rate limit of 5,000 requests per hour for authenticated users. It automatically handles rate limiting by pausing or retrying requests as needed.
 
 ## Data & Privacy
-- **Local First**: All repository data and embeddings are stored locally in `~/.repog/repog.db`.
-- **Credentials**: API keys are stored securely in your system's keychain (macOS Keychain, Windows Credential Manager, or Linux Secret Service).
-- **Privacy**: No code or data is sent to any server other than:
-  - **GitHub API**: To fetch repository data.
-  - **Google Gemini API**: To generate embeddings and answers.
 
-## Development
+- **Local First**: All data is stored locally in `~/.repog/repog.db`
+- **Secure Credentials**: API keys are stored in your system keychain (macOS Keychain, Windows Credential Manager, or Linux Secret Service)
+- **Privacy**: Code is only sent to:
+  - **GitHub API**: To fetch repository metadata and content
+  - **Google Gemini API**: To generate embeddings and AI responses
+
+## GitHub API Rate Limits
+
+RepoG respects GitHub's rate limit of 5,000 requests per hour for authenticated users. Use `repog status` to check your remaining quota.
+
+## Contributing
+
+We welcome contributions! Here's how to get started:
+
+### Development Setup
+
+1. Fork and clone the repository:
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/repog.git
+   cd repog
+   ```
+
+2. Install dependencies:
+   - Go 1.22+
+   - C compiler (GCC or Clang)
+   - golangci-lint (for linting)
+
+3. Build and test:
+   ```bash
+   go build -o repog ./cmd/repog
+   go test ./...
+   ```
+
+### Running Tests
 
 ```bash
-# Build
-go build -o repog ./cmd/repog
-
-# Run tests
+# Run all tests
 go test ./...
 
-# Run tests with coverage
-go test -coverprofile=coverage.out ./...
-go tool cover -html=coverage.out
+# Run with race detection and coverage
+go test -race -coverprofile=coverage.out ./...
 
-# Lint (requires golangci-lint)
+# Run tests for a specific package
+go test ./internal/db/...
+
+# View coverage report
+go tool cover -html=coverage.out
+```
+
+### Linting
+
+```bash
 golangci-lint run
 ```
 
+### Submitting Changes
+
+1. Create a feature branch from `main`
+2. Make your changes
+3. Ensure tests pass and linting is clean
+4. Submit a pull request
+
+### Commit Messages
+
+Follow [Conventional Commits](https://www.conventionalcommits.org/):
+
+- `feat:` New features
+- `fix:` Bug fixes
+- `docs:` Documentation changes
+- `test:` Adding or updating tests
+- `refactor:` Code changes that neither fix bugs nor add features
+- `chore:` Maintenance tasks
+
+### Code Style
+
+- Follow standard Go conventions
+- Use `gofmt` for formatting
+- Keep functions focused and small
+- Write table-driven tests where appropriate
+- Return errors rather than panicking
+
+### Reporting Issues
+
+- Use the [GitHub issue tracker](https://github.com/hackastak/repog/issues)
+- Include steps to reproduce, expected behavior, and actual behavior
+- Include your Go version and OS
+
 ## License
 
-MIT © [SMILESTACKLABS](https://github.com/hackastak)
+MIT License - see [LICENSE](LICENSE) for details.
+
+---
+
+Built with [sqlite-vec](https://github.com/asg017/sqlite-vec) and [Google Gemini](https://ai.google.dev/).

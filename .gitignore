@@ -1,9 +1,11 @@
-# Dependencies
-node_modules/
-
 # Build outputs
 dist/
-*.tsbuildinfo
+repog
+*.exe
+
+# Test coverage
+coverage.out
+coverage.html
 
 # Environment
 .env
@@ -21,19 +23,15 @@ dist/
 .DS_Store
 Thumbs.db
 
-# Logs
-*.log
-npm-debug.log*
-pnpm-debug.log*
-
-# Test coverage
-coverage/
-
 # SQLite databases
 *.db
+*.db-shm
+*.db-wal
 *.sqlite
 *.sqlite3
 
 # RepoG data directory
 .repog/
+
+# CGO artifacts
 cgo-headers/

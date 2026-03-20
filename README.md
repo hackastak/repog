@@ -28,7 +28,7 @@ brew install hackastak/tap/repog
 
 ### Download Binary
 
-Download the latest release for your platform from the [Releases page](https://github.com/hackastak/repog/releases).
+Download the latest release for your platform from the [Releases page](https://github.com/hackastak/repog/releases). See the [Changelog](CHANGELOG.md) for version history.
 
 ### From Source
 
@@ -117,80 +117,26 @@ RepoG respects GitHub's rate limit of 5,000 requests per hour for authenticated 
 
 ## Contributing
 
-We welcome contributions! Here's how to get started:
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details on:
 
-### Development Setup
+- Development setup and prerequisites
+- Running tests and linting
+- Code style and conventions
+- Submitting pull requests
 
-1. Fork and clone the repository:
-   ```bash
-   git clone https://github.com/YOUR_USERNAME/repog.git
-   cd repog
-   ```
+### Quick Links
 
-2. Install dependencies:
-   - Go 1.22+
-   - C compiler (GCC or Clang)
-   - golangci-lint (for linting)
+- [Report a Bug](https://github.com/hackastak/repog/issues/new?template=bug_report.md)
+- [Request a Feature](https://github.com/hackastak/repog/issues/new?template=feature_request.md)
+- [Good First Issues](https://github.com/hackastak/repog/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
 
-3. Build and test:
-   ```bash
-   go build -o repog ./cmd/repog
-   go test ./...
-   ```
+## Documentation
 
-### Running Tests
-
-```bash
-# Run all tests
-go test ./...
-
-# Run with race detection and coverage
-go test -race -coverprofile=coverage.out ./...
-
-# Run tests for a specific package
-go test ./internal/db/...
-
-# View coverage report
-go tool cover -html=coverage.out
-```
-
-### Linting
-
-```bash
-golangci-lint run
-```
-
-### Submitting Changes
-
-1. Create a feature branch from `main`
-2. Make your changes
-3. Ensure tests pass and linting is clean
-4. Submit a pull request
-
-### Commit Messages
-
-Follow [Conventional Commits](https://www.conventionalcommits.org/):
-
-- `feat:` New features
-- `fix:` Bug fixes
-- `docs:` Documentation changes
-- `test:` Adding or updating tests
-- `refactor:` Code changes that neither fix bugs nor add features
-- `chore:` Maintenance tasks
-
-### Code Style
-
-- Follow standard Go conventions
-- Use `gofmt` for formatting
-- Keep functions focused and small
-- Write table-driven tests where appropriate
-- Return errors rather than panicking
-
-### Reporting Issues
-
-- Use the [GitHub issue tracker](https://github.com/hackastak/repog/issues)
-- Include steps to reproduce, expected behavior, and actual behavior
-- Include your Go version and OS
+| Document | Description |
+|----------|-------------|
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Guide for contributors |
+| [CHANGELOG.md](CHANGELOG.md) | Version history and release notes |
+| [LICENSE](LICENSE) | MIT License |
 
 ## License
 

@@ -1,0 +1,26 @@
+# CODEOWNERS
+#
+# This file defines individuals or teams that are responsible for code in this repository.
+# Code owners are automatically requested for review when someone opens a pull request
+# that modifies code that they own.
+#
+# More info: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything in the repo
+* @hackastak
+
+# Security-critical files require explicit review
+/SECURITY.md @hackastak
+/.github/workflows/ @hackastak
+
+# Core packages
+/internal/config/ @hackastak
+/internal/db/ @hackastak
+
+# CLI commands
+/cmd/ @hackastak
+/commands/ @hackastak
+
+# Documentation
+*.md @hackastak
+/docs/ @hackastak

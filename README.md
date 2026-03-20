@@ -119,12 +119,12 @@ RepoG respects GitHub's rate limit of 5,000 requests per hour for authenticated 
 
 RepoG is under active development. Here's what's coming next:
 
-- **Multi-platform Git support** - GitLab, Bitbucket, and self-hosted Git servers
 - **Enhanced embeddings** - Support for multiple embedding providers (OpenAI, local models)
-- **Code analysis** - Dependency graphs, language statistics, and complexity metrics
-- **Team features** - Shared knowledge bases and collaborative annotations
-- **Performance** - Incremental syncing and faster embedding generation
+- **Performance** - Incremental syncing and re-ranking
+- **TUI** - Improve usability by building RepoG terminal user interface using Bubbletea 
 - **Export capabilities** - Generate documentation and knowledge graphs from your repos
+- **Code analysis** - Dependency graphs, language statistics, and complexity metrics
+- **Multi-platform Git support** - GitLab, Bitbucket, and self-hosted Git servers
 
 See the [issues page](https://github.com/hackastak/repog/issues) for planned features and discussions.
 

@@ -187,12 +187,13 @@ func runInit(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Initialize database
+	// Initialize database with default Gemini embedding dimensions (768)
 	s = spinner.New(spinner.CharSets[14], 100*time.Millisecond)
 	s.Suffix = " Initializing database..."
 	s.Start()
 
-	database, err := db.Open(dbPath)
+	embeddingDimensions := 768 // Gemini default
+	database, err := db.Open(dbPath, embeddingDimensions)
 	if err != nil {
 		s.Stop()
 		fmt.Println(red("✗"), "Database init failed:", err)
@@ -209,7 +210,9 @@ func runInit(cmd *cobra.Command, args []string) error {
 	s.Start()
 
 	cfg := &config.Config{
-		DBPath: dbPath,
+		DBPath:     dbPath,
+		Embedding:  config.DefaultEmbeddingConfig(),
+		Generation: config.DefaultGenerationConfig(),
 	}
 
 	if err := config.SaveConfig(cfg, githubToken, geminiKey); err != nil {

@@ -8,17 +8,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hackastak/repog/internal/gemini"
+	"github.com/hackastak/repog/internal/provider"
 	"github.com/hackastak/repog/internal/search"
 )
 
 // AskOptions configures the Q&A query.
 type AskOptions struct {
-	Question string
-	Repo     string // optional full_name filter
-	Limit    int    // default 10
-	DB       *sql.DB
-	APIKey   string
+	Question          string
+	Repo              string // optional full_name filter
+	Limit             int    // default 10
+	DB                *sql.DB
+	EmbeddingProvider provider.EmbeddingProvider
+	LLMProvider       provider.LLMProvider
 }
 
 // SourceAttribution represents a source used in the answer.
@@ -102,7 +103,7 @@ func AskQuestion(ctx context.Context, opts AskOptions, onChunk func(string)) (As
 	}
 
 	// Search for relevant chunks
-	searchResult, err := search.SearchRepos(ctx, opts.DB, opts.APIKey, opts.Question, search.SearchFilters{
+	searchResult, err := search.SearchRepos(ctx, opts.DB, opts.EmbeddingProvider, opts.Question, search.SearchFilters{
 		Limit: limit,
 	})
 	if err != nil {
@@ -136,7 +137,7 @@ func AskQuestion(ctx context.Context, opts AskOptions, onChunk func(string)) (As
 	prompt := buildAskPrompt(opts.Question, results)
 
 	// Stream LLM response
-	llmResult, llmErr := gemini.StreamLLM(ctx, opts.APIKey, gemini.LLMRequest{
+	llmResult, llmErr := opts.LLMProvider.Stream(ctx, provider.LLMRequest{
 		Prompt:       prompt,
 		SystemPrompt: systemPrompt,
 	}, onChunk)
@@ -144,7 +145,7 @@ func AskQuestion(ctx context.Context, opts AskOptions, onChunk func(string)) (As
 	result.DurationMs = time.Since(start).Milliseconds()
 
 	if llmErr != nil {
-		result.Answer = fmt.Sprintf("Error generating answer: %s", llmErr.Error)
+		result.Answer = fmt.Sprintf("Error generating answer: %s", llmErr.Message)
 		return result, nil
 	}
 

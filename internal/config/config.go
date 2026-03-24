@@ -3,6 +3,7 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -17,17 +18,30 @@ const (
 	KeyringGitHubPAT = "github_pat"
 	// KeyringGeminiAPIKey is the keyring key for the Gemini API key.
 	KeyringGeminiAPIKey = "gemini_api_key"
+	// KeyringOpenRouterAPIKey is the keyring key for the OpenRouter API key.
+	KeyringOpenRouterAPIKey = "openrouter_api_key"
 	// ConfigVersion is the current config file version.
-	ConfigVersion = 2
+	ConfigVersion = 3
 )
 
 // ErrNotConfigured is returned when repog has not been initialised.
 var ErrNotConfigured = errors.New("repog is not configured — run `repog init` first")
 
+// ProviderConfig represents configuration for an AI provider
+type ProviderConfig struct {
+	Provider   string `yaml:"provider"`              // gemini, ollama, openrouter
+	Model      string `yaml:"model"`                 // model name
+	Dimensions int    `yaml:"dimensions,omitempty"`  // embedding dimensions (embedding only)
+	BaseURL    string `yaml:"base_url,omitempty"`    // custom base URL (ollama/openrouter)
+	Fallback   string `yaml:"fallback,omitempty"`    // fallback model (LLM only)
+}
+
 // Config represents the on-disk configuration.
 type Config struct {
-	DBPath        string `yaml:"db_path"`
-	ConfigVersion int    `yaml:"config_version"`
+	DBPath        string         `yaml:"db_path"`
+	ConfigVersion int            `yaml:"config_version"`
+	Embedding     ProviderConfig `yaml:"embedding"`
+	Generation    ProviderConfig `yaml:"generation"`
 }
 
 // KeyringBackend defines the interface for keyring operations.
@@ -91,7 +105,8 @@ func DefaultDBPath() string {
 }
 
 // LoadConfig reads config from disk. Returns ErrNotConfigured if config file
-// does not exist or either secret is missing from the keyring.
+// does not exist or required secrets are missing from the keyring.
+// Automatically migrates v2 configs to v3 with Gemini defaults.
 func LoadConfig() (*Config, error) {
 	path, err := configPath()
 	if err != nil {
@@ -111,15 +126,33 @@ func LoadConfig() (*Config, error) {
 		return nil, err
 	}
 
-	// Verify both secrets exist in keyring
+	// Auto-migrate v2 to v3
+	if cfg.ConfigVersion < 3 {
+		cfg.Embedding = DefaultEmbeddingConfig()
+		cfg.Generation = DefaultGenerationConfig()
+		cfg.ConfigVersion = 3
+		// Don't save here - let the user continue with defaults in memory
+	}
+
+	// Verify GitHub PAT exists
 	_, err = defaultKeyring.Get(KeyringService, KeyringGitHubPAT)
 	if err != nil {
 		return nil, ErrNotConfigured
 	}
 
-	_, err = defaultKeyring.Get(KeyringService, KeyringGeminiAPIKey)
-	if err != nil {
-		return nil, ErrNotConfigured
+	// Verify provider-specific API keys exist based on configuration
+	if cfg.Embedding.Provider != "ollama" {
+		_, err := GetAPIKeyForProvider(cfg.Embedding.Provider)
+		if err != nil {
+			return nil, ErrNotConfigured
+		}
+	}
+
+	if cfg.Generation.Provider != "ollama" {
+		_, err := GetAPIKeyForProvider(cfg.Generation.Provider)
+		if err != nil {
+			return nil, ErrNotConfigured
+		}
 	}
 
 	return &cfg, nil
@@ -188,6 +221,7 @@ func ClearConfig() error {
 	// Delete keyring entries (ignore errors)
 	_ = defaultKeyring.Delete(KeyringService, KeyringGitHubPAT)
 	_ = defaultKeyring.Delete(KeyringService, KeyringGeminiAPIKey)
+	_ = defaultKeyring.Delete(KeyringService, KeyringOpenRouterAPIKey)
 
 	return nil
 }
@@ -215,4 +249,56 @@ func GetGeminiAPIKey() (string, error) {
 		return "", ErrNotConfigured
 	}
 	return key, nil
+}
+
+// GetAPIKeyForProvider retrieves the API key for a specific provider from the keyring.
+func GetAPIKeyForProvider(provider string) (string, error) {
+	switch provider {
+	case "gemini":
+		return GetGeminiAPIKey()
+	case "openrouter":
+		key, err := defaultKeyring.Get(KeyringService, KeyringOpenRouterAPIKey)
+		if err != nil {
+			return "", ErrNotConfigured
+		}
+		return key, nil
+	case "ollama":
+		// Ollama doesn't need an API key (local)
+		return "", nil
+	default:
+		return "", fmt.Errorf("unknown provider: %s", provider)
+	}
+}
+
+// SetAPIKeyForProvider stores the API key for a specific provider in the keyring.
+func SetAPIKeyForProvider(provider, key string) error {
+	switch provider {
+	case "gemini":
+		return defaultKeyring.Set(KeyringService, KeyringGeminiAPIKey, key)
+	case "openrouter":
+		return defaultKeyring.Set(KeyringService, KeyringOpenRouterAPIKey, key)
+	case "ollama":
+		// Ollama doesn't need an API key
+		return nil
+	default:
+		return fmt.Errorf("unknown provider: %s", provider)
+	}
+}
+
+// DefaultEmbeddingConfig returns the default Gemini embedding configuration.
+func DefaultEmbeddingConfig() ProviderConfig {
+	return ProviderConfig{
+		Provider:   "gemini",
+		Model:      "gemini-embedding-2-preview",
+		Dimensions: 768,
+	}
+}
+
+// DefaultGenerationConfig returns the default Gemini generation configuration.
+func DefaultGenerationConfig() ProviderConfig {
+	return ProviderConfig{
+		Provider: "gemini",
+		Model:    "gemini-2.5-flash",
+		Fallback: "gemini-3.0-flash",
+	}
 }

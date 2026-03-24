@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hackastak/repog/internal/gemini"
+	"github.com/hackastak/repog/internal/provider"
 )
 
 // SearchFilters contains optional filters for search queries.
@@ -47,7 +47,7 @@ type SearchQueryResult struct {
 // SearchRepos embeds the query and performs a cosine similarity search
 // against chunk_embeddings. Results are deduplicated by repo (highest
 // similarity chunk per repo), then capped at Limit.
-func SearchRepos(ctx context.Context, db *sql.DB, apiKey, query string, filters SearchFilters) (SearchQueryResult, error) {
+func SearchRepos(ctx context.Context, db *sql.DB, embedProvider provider.EmbeddingProvider, query string, filters SearchFilters) (SearchQueryResult, error) {
 	result := SearchQueryResult{
 		Results: make([]SearchResult, 0),
 	}
@@ -60,7 +60,7 @@ func SearchRepos(ctx context.Context, db *sql.DB, apiKey, query string, filters 
 
 	// Embed the query
 	embedStart := time.Now()
-	embedding := gemini.EmbedQuery(ctx, apiKey, query)
+	embedding := embedProvider.EmbedQuery(ctx, query)
 	result.QueryEmbeddingMs = time.Since(embedStart).Milliseconds()
 
 	if embedding == nil {
@@ -68,7 +68,7 @@ func SearchRepos(ctx context.Context, db *sql.DB, apiKey, query string, filters 
 	}
 
 	// Convert embedding to bytes for sqlite-vec
-	embeddingBytes := gemini.Float32SliceToBytes(embedding)
+	embeddingBytes := provider.Float32SliceToBytes(embedding)
 
 	// Build dynamic WHERE clause
 	var whereClauses []string

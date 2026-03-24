@@ -6,15 +6,15 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/hackastak/repog/internal/gemini"
+	"github.com/hackastak/repog/internal/provider"
 )
 
 // EmbedOptions configures the embedding pipeline.
 type EmbedOptions struct {
-	IncludeFileTree bool
-	BatchSize       int // default 20, max 100
-	DB              *sql.DB
-	GeminiAPIKey    string
+	IncludeFileTree   bool
+	BatchSize         int // default 20, max 100
+	DB                *sql.DB
+	EmbeddingProvider provider.EmbeddingProvider
 }
 
 // EmbedEvent represents a progress event from the embedding pipeline.
@@ -53,7 +53,7 @@ func RunEmbedPipeline(ctx context.Context, opts EmbedOptions) <-chan EmbedEvent 
 
 	// Set defaults
 	if opts.BatchSize <= 0 {
-		opts.BatchSize = 20
+		opts.BatchSize = opts.EmbeddingProvider.BatchSize()
 	}
 	if opts.BatchSize > 100 {
 		opts.BatchSize = 100
@@ -196,21 +196,27 @@ func RunEmbedPipeline(ctx context.Context, opts EmbedOptions) <-chan EmbedEvent 
 			batch := chunks[start:end]
 
 			// Prepare embed requests
-			requests := make([]gemini.EmbedRequest, len(batch))
+			requests := make([]provider.EmbedRequest, len(batch))
 			for i, chunk := range batch {
-				requests[i] = gemini.EmbedRequest{
-					ID:      chunk.ID,
+				requests[i] = provider.EmbedRequest{
+					ID:      int(chunk.ID),
 					Content: chunk.Content,
 				}
 			}
 
-			// Call Gemini API
-			result := gemini.EmbedChunks(ctx, opts.GeminiAPIKey, requests)
+			// Call embedding provider
+			result := opts.EmbeddingProvider.EmbedChunks(ctx, requests)
 
 			// Process results
 			for _, embedResult := range result.Results {
+				// Skip if there was an error
+				if embedResult.Error != nil {
+					chunksErrored++
+					continue
+				}
+
 				// Store embedding in database
-				embeddingBytes := gemini.Float32SliceToBytes(embedResult.Embedding)
+				embeddingBytes := provider.Float32SliceToBytes(embedResult.Embedding)
 
 				// Delete existing embedding if any
 				_, _ = opts.DB.Exec("DELETE FROM chunk_embeddings WHERE chunk_id = ?", embedResult.ID)
@@ -230,7 +236,7 @@ func RunEmbedPipeline(ctx context.Context, opts EmbedOptions) <-chan EmbedEvent 
 				// Track repo progress
 				var chunkRepoID int64
 				for _, c := range batch {
-					if c.ID == embedResult.ID {
+					if int(c.ID) == embedResult.ID {
 						chunkRepoID = c.RepoID
 						break
 					}
@@ -250,12 +256,13 @@ func RunEmbedPipeline(ctx context.Context, opts EmbedOptions) <-chan EmbedEvent 
 				}
 			}
 
-			// Collect error messages
+			// Collect error messages from failed results
 			var batchErrors []string
-			for _, embedErr := range result.Errors {
-				batchErrors = append(batchErrors, embedErr.Error)
+			for _, embedResult := range result.Results {
+				if embedResult.Error != nil {
+					batchErrors = append(batchErrors, embedResult.Error.Error())
+				}
 			}
-			chunksErrored += len(result.Errors)
 
 			eventCh <- EmbedEvent{
 				Type:           "batch",

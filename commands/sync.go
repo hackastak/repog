@@ -61,7 +61,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 
 	// Open database
-	database, err := db.Open(cfg.DBPath)
+	database, err := db.Open(cfg.DBPath, cfg.Embedding.Dimensions)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, red("Database error:"), err)
 		os.Exit(1)

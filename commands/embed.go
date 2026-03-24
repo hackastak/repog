@@ -13,6 +13,8 @@ import (
 	"github.com/hackastak/repog/internal/config"
 	"github.com/hackastak/repog/internal/db"
 	"github.com/hackastak/repog/internal/embed"
+	_ "github.com/hackastak/repog/internal/provider/gemini"
+	"github.com/hackastak/repog/internal/provider"
 )
 
 var embedCmd = &cobra.Command{
@@ -46,14 +48,21 @@ func runEmbed(cmd *cobra.Command, args []string) error {
 		os.Exit(1)
 	}
 
-	geminiKey, err := config.GetGeminiAPIKey()
+	// Create embedding provider
+	apiKey, err := config.GetAPIKeyForProvider(cfg.Embedding.Provider)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, red("Run `repog init` first."))
+		fmt.Fprintln(os.Stderr, red("Failed to get API key:"), err)
+		os.Exit(1)
+	}
+
+	embedProvider, err := provider.NewEmbeddingProvider(cfg.Embedding, apiKey)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, red("Failed to create embedding provider:"), err)
 		os.Exit(1)
 	}
 
 	// Open database
-	database, err := db.Open(cfg.DBPath)
+	database, err := db.Open(cfg.DBPath, cfg.Embedding.Dimensions)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, red("Database error:"), err)
 		os.Exit(1)
@@ -69,10 +78,10 @@ func runEmbed(cmd *cobra.Command, args []string) error {
 	}
 
 	eventCh := embed.RunEmbedPipeline(context.Background(), embed.EmbedOptions{
-		IncludeFileTree: embedIncludeFileTree,
-		BatchSize:       embedBatchSize,
-		DB:              database,
-		GeminiAPIKey:    geminiKey,
+		IncludeFileTree:   embedIncludeFileTree,
+		BatchSize:         embedBatchSize,
+		DB:                database,
+		EmbeddingProvider: embedProvider,
 	})
 
 	for event := range eventCh {

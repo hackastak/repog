@@ -18,6 +18,8 @@ const (
 	KeyringGitHubPAT = "github_pat"
 	// KeyringGeminiAPIKey is the keyring key for the Gemini API key.
 	KeyringGeminiAPIKey = "gemini_api_key"
+	// KeyringOpenAIAPIKey is the keyring key for the OpenAI API key.
+	KeyringOpenAIAPIKey = "openai_api_key"
 	// KeyringOpenRouterAPIKey is the keyring key for the OpenRouter API key.
 	KeyringOpenRouterAPIKey = "openrouter_api_key"
 	// ConfigVersion is the current config file version.
@@ -159,6 +161,7 @@ func LoadConfig() (*Config, error) {
 }
 
 // SaveConfig writes config to disk and stores secrets in the keyring.
+// Deprecated: Use SaveConfigFile and SetAPIKeyForProvider for new multi-provider setup.
 func SaveConfig(cfg *Config, githubPAT, geminiAPIKey string) error {
 	// Ensure config directory exists
 	dir, err := configDir()
@@ -210,6 +213,46 @@ func SaveConfig(cfg *Config, githubPAT, geminiAPIKey string) error {
 	return nil
 }
 
+// SaveConfigFile writes the config file to disk without storing API keys.
+// Use SetAPIKeyForProvider to store API keys in the keyring separately.
+func SaveConfigFile(cfg *Config) error {
+	// Ensure config directory exists
+	dir, err := configDir()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return err
+	}
+
+	// Ensure DB directory exists
+	dbDir := filepath.Dir(cfg.DBPath)
+	if err := os.MkdirAll(dbDir, 0700); err != nil {
+		return err
+	}
+
+	// Set config version
+	cfg.ConfigVersion = ConfigVersion
+
+	// Write config file
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+
+	path, err := configPath()
+	if err != nil {
+		return err
+	}
+
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		return err
+	}
+
+	// Set permissions explicitly
+	return os.Chmod(path, 0600)
+}
+
 // ClearConfig removes the config file and deletes keyring entries.
 func ClearConfig() error {
 	// Delete config file
@@ -221,6 +264,7 @@ func ClearConfig() error {
 	// Delete keyring entries (ignore errors)
 	_ = defaultKeyring.Delete(KeyringService, KeyringGitHubPAT)
 	_ = defaultKeyring.Delete(KeyringService, KeyringGeminiAPIKey)
+	_ = defaultKeyring.Delete(KeyringService, KeyringOpenAIAPIKey)
 	_ = defaultKeyring.Delete(KeyringService, KeyringOpenRouterAPIKey)
 
 	return nil
@@ -256,6 +300,12 @@ func GetAPIKeyForProvider(provider string) (string, error) {
 	switch provider {
 	case "gemini":
 		return GetGeminiAPIKey()
+	case "openai":
+		key, err := defaultKeyring.Get(KeyringService, KeyringOpenAIAPIKey)
+		if err != nil {
+			return "", ErrNotConfigured
+		}
+		return key, nil
 	case "openrouter":
 		key, err := defaultKeyring.Get(KeyringService, KeyringOpenRouterAPIKey)
 		if err != nil {
@@ -273,8 +323,12 @@ func GetAPIKeyForProvider(provider string) (string, error) {
 // SetAPIKeyForProvider stores the API key for a specific provider in the keyring.
 func SetAPIKeyForProvider(provider, key string) error {
 	switch provider {
+	case "github":
+		return defaultKeyring.Set(KeyringService, KeyringGitHubPAT, key)
 	case "gemini":
 		return defaultKeyring.Set(KeyringService, KeyringGeminiAPIKey, key)
+	case "openai":
+		return defaultKeyring.Set(KeyringService, KeyringOpenAIAPIKey, key)
 	case "openrouter":
 		return defaultKeyring.Set(KeyringService, KeyringOpenRouterAPIKey, key)
 	case "ollama":

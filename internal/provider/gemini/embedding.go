@@ -9,16 +9,17 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/hackastak/repog/internal/config"
 	"github.com/hackastak/repog/internal/provider"
 )
 
 func init() {
 	// Register Gemini providers
-	provider.RegisterEmbeddingProvider("gemini", func(apiKey, model string, dimensions int) (provider.EmbeddingProvider, error) {
-		return NewGeminiEmbeddingProvider(apiKey, model, dimensions)
+	provider.RegisterEmbeddingProvider("gemini", func(cfg config.ProviderConfig, apiKey string) (provider.EmbeddingProvider, error) {
+		return NewGeminiEmbeddingProvider(apiKey, cfg.Model, cfg.Dimensions)
 	})
-	provider.RegisterLLMProvider("gemini", func(apiKey, model, fallbackModel string) (provider.LLMProvider, error) {
-		return NewGeminiLLMProvider(apiKey, model, fallbackModel)
+	provider.RegisterLLMProvider("gemini", func(cfg config.ProviderConfig, apiKey string) (provider.LLMProvider, error) {
+		return NewGeminiLLMProvider(apiKey, cfg.Model, cfg.Fallback)
 	})
 }
 

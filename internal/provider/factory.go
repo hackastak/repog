@@ -7,10 +7,10 @@ import (
 )
 
 // EmbeddingProviderFactory is a function that creates an EmbeddingProvider
-type EmbeddingProviderFactory func(apiKey, model string, dimensions int) (EmbeddingProvider, error)
+type EmbeddingProviderFactory func(cfg config.ProviderConfig, apiKey string) (EmbeddingProvider, error)
 
 // LLMProviderFactory is a function that creates an LLMProvider
-type LLMProviderFactory func(apiKey, model, fallbackModel string) (LLMProvider, error)
+type LLMProviderFactory func(cfg config.ProviderConfig, apiKey string) (LLMProvider, error)
 
 var (
 	embeddingProviders = make(map[string]EmbeddingProviderFactory)
@@ -33,7 +33,7 @@ func NewEmbeddingProvider(cfg config.ProviderConfig, apiKey string) (EmbeddingPr
 	if !ok {
 		return nil, fmt.Errorf("unknown embedding provider: %s", cfg.Provider)
 	}
-	return factory(apiKey, cfg.Model, cfg.Dimensions)
+	return factory(cfg, apiKey)
 }
 
 // NewLLMProvider creates an LLMProvider based on config
@@ -42,5 +42,5 @@ func NewLLMProvider(cfg config.ProviderConfig, apiKey string) (LLMProvider, erro
 	if !ok {
 		return nil, fmt.Errorf("unknown LLM provider: %s", cfg.Provider)
 	}
-	return factory(apiKey, cfg.Model, cfg.Fallback)
+	return factory(cfg, apiKey)
 }

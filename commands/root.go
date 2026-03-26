@@ -23,6 +23,7 @@ func Execute() error {
 
 func init() {
 	rootCmd.AddCommand(initCmd)
+	rootCmd.AddCommand(reconfigCmd)
 	rootCmd.AddCommand(syncCmd)
 	rootCmd.AddCommand(embedCmd)
 	rootCmd.AddCommand(searchCmd)

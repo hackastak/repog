@@ -181,6 +181,14 @@ func SaveConfig(cfg *Config, githubPAT, geminiAPIKey string) error {
 	// Set config version
 	cfg.ConfigVersion = ConfigVersion
 
+	// Ensure provider configs are set (for backward compatibility)
+	if cfg.Embedding.Provider == "" {
+		cfg.Embedding = DefaultEmbeddingConfig()
+	}
+	if cfg.Generation.Provider == "" {
+		cfg.Generation = DefaultGenerationConfig()
+	}
+
 	// Write config file
 	data, err := yaml.Marshal(cfg)
 	if err != nil {

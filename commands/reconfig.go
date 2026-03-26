@@ -15,10 +15,12 @@ import (
 	"github.com/hackastak/repog/internal/config"
 	"github.com/hackastak/repog/internal/db"
 	"github.com/hackastak/repog/internal/provider"
+	_ "github.com/hackastak/repog/internal/provider/anthropic"
 	_ "github.com/hackastak/repog/internal/provider/gemini"
 	_ "github.com/hackastak/repog/internal/provider/ollama"
 	_ "github.com/hackastak/repog/internal/provider/openai"
 	_ "github.com/hackastak/repog/internal/provider/openrouter"
+	_ "github.com/hackastak/repog/internal/provider/voyageai"
 )
 
 var reconfigCmd = &cobra.Command{
@@ -38,7 +40,7 @@ var (
 )
 
 func init() {
-	reconfigCmd.Flags().StringVar(&reconfigProvider, "provider", "", "Provider name (gemini, openai, openrouter, or ollama)")
+	reconfigCmd.Flags().StringVar(&reconfigProvider, "provider", "", "Provider name (gemini, openai, openrouter, voyageai, anthropic, or ollama)")
 	reconfigCmd.Flags().StringVar(&reconfigModel, "model", "", "Model name")
 	reconfigCmd.Flags().IntVar(&reconfigDimensions, "dimensions", 0, "Embedding dimensions (embedding only)")
 	reconfigCmd.Flags().StringVar(&reconfigBaseURL, "base-url", "", "Custom base URL (ollama only)")
@@ -210,7 +212,7 @@ func reconfigureEmbeddingProvider(current config.ProviderConfig, providerFlag, m
 	} else {
 		fmt.Println()
 		fmt.Println(dim("Select an embedding provider:"))
-		options := []string{"gemini", "openai", "openrouter", "ollama"}
+		options := []string{"gemini", "openai", "openrouter", "voyageai", "ollama"}
 		prompt := &survey.Select{
 			Message: "Embedding Provider:",
 			Options: options,
@@ -244,6 +246,8 @@ func reconfigureEmbeddingProvider(current config.ProviderConfig, providerFlag, m
 			model = "text-embedding-3-small"
 		case "openrouter":
 			model = "openai/text-embedding-3-small"
+		case "voyageai":
+			model = "voyage-code-3"
 		case "ollama":
 			model = "nomic-embed-text"
 		}
@@ -271,6 +275,8 @@ func reconfigureEmbeddingProvider(current config.ProviderConfig, providerFlag, m
 			dimensions = 768
 		case "openai", "openrouter":
 			dimensions = 1536
+		case "voyageai":
+			dimensions = 1024
 		case "ollama":
 			dimensions = 768
 		}
@@ -326,6 +332,10 @@ func reconfigureEmbeddingProvider(current config.ProviderConfig, providerFlag, m
 				fmt.Println(dim("Get an OpenAI API key at: https://platform.openai.com/api-keys"))
 			case "openrouter":
 				fmt.Println(dim("Get an OpenRouter API key at: https://openrouter.ai/keys"))
+			case "voyageai":
+				fmt.Println(dim("Get a Voyage AI API key at: https://dash.voyageai.com"))
+			case "anthropic":
+				fmt.Println(dim("Get an Anthropic API key at: https://console.anthropic.com"))
 			}
 			fmt.Println()
 
@@ -502,6 +512,10 @@ func reconfigureGenerationProvider(current config.ProviderConfig, providerFlag, 
 				fmt.Println(dim("Get an OpenAI API key at: https://platform.openai.com/api-keys"))
 			case "openrouter":
 				fmt.Println(dim("Get an OpenRouter API key at: https://openrouter.ai/keys"))
+			case "voyageai":
+				fmt.Println(dim("Get a Voyage AI API key at: https://dash.voyageai.com"))
+			case "anthropic":
+				fmt.Println(dim("Get an Anthropic API key at: https://console.anthropic.com"))
 			}
 			fmt.Println()
 

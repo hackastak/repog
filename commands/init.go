@@ -15,10 +15,12 @@ import (
 	"github.com/hackastak/repog/internal/db"
 	"github.com/hackastak/repog/internal/github"
 	"github.com/hackastak/repog/internal/provider"
+	_ "github.com/hackastak/repog/internal/provider/anthropic"
 	_ "github.com/hackastak/repog/internal/provider/gemini"
 	_ "github.com/hackastak/repog/internal/provider/ollama"
 	_ "github.com/hackastak/repog/internal/provider/openai"
 	_ "github.com/hackastak/repog/internal/provider/openrouter"
+	_ "github.com/hackastak/repog/internal/provider/voyageai"
 )
 
 var initCmd = &cobra.Command{
@@ -42,8 +44,8 @@ func init() {
 	initCmd.Flags().StringVar(&initGitHubToken, "github-token", "", "GitHub Personal Access Token")
 	initCmd.Flags().StringVar(&initDBPath, "db-path", "", "Custom database path")
 	initCmd.Flags().BoolVarP(&initForce, "force", "f", false, "Overwrite existing configuration")
-	initCmd.Flags().StringVar(&initEmbedProvider, "embed-provider", "", "Embedding provider (gemini, openai, openrouter, or ollama)")
-	initCmd.Flags().StringVar(&initGenProvider, "gen-provider", "", "Generation provider (gemini, openai, openrouter, or ollama)")
+	initCmd.Flags().StringVar(&initEmbedProvider, "embed-provider", "", "Embedding provider (gemini, openai, openrouter, voyageai, or ollama)")
+	initCmd.Flags().StringVar(&initGenProvider, "gen-provider", "", "Generation provider (gemini, openai, openrouter, anthropic, or ollama)")
 	initCmd.Flags().StringVar(&initEmbedAPIKey, "embed-api-key", "", "API key for embedding provider")
 	initCmd.Flags().StringVar(&initGenAPIKey, "gen-api-key", "", "API key for generation provider")
 }
@@ -66,7 +68,7 @@ func selectEmbeddingProvider(providerFlag, apiKeyFlag string, red, dim, green fu
 	} else {
 		fmt.Println()
 		fmt.Println(dim("Select an embedding provider:"))
-		options := []string{"gemini", "openai", "openrouter", "ollama"}
+		options := []string{"gemini", "openai", "openrouter", "voyageai", "ollama"}
 		prompt := &survey.Select{
 			Message: "Embedding Provider:",
 			Options: options,
@@ -92,6 +94,8 @@ func selectEmbeddingProvider(providerFlag, apiKeyFlag string, red, dim, green fu
 			fmt.Println(dim("Get an OpenAI API key at: https://platform.openai.com/api-keys"))
 		case "openrouter":
 			fmt.Println(dim("Get an OpenRouter API key at: https://openrouter.ai/keys"))
+		case "voyageai":
+			fmt.Println(dim("Get a Voyage AI API key at: https://dash.voyageai.com"))
 		}
 		fmt.Println()
 
@@ -120,6 +124,12 @@ func selectEmbeddingProvider(providerFlag, apiKeyFlag string, red, dim, green fu
 			Provider:   "openrouter",
 			Model:      "openai/text-embedding-3-small",
 			Dimensions: 1536,
+		}
+	case "voyageai":
+		cfg = config.ProviderConfig{
+			Provider:   "voyageai",
+			Model:      "voyage-code-3",
+			Dimensions: 1024,
 		}
 	case "ollama":
 		cfg = config.ProviderConfig{
@@ -169,7 +179,7 @@ func selectGenerationProvider(providerFlag, apiKeyFlag string, red, dim, green f
 	} else {
 		fmt.Println()
 		fmt.Println(dim("Select a generation provider:"))
-		options := []string{"gemini", "openai", "openrouter", "ollama"}
+		options := []string{"gemini", "openai", "openrouter", "anthropic", "ollama"}
 		prompt := &survey.Select{
 			Message: "Generation Provider:",
 			Options: options,
@@ -209,6 +219,8 @@ func selectGenerationProvider(providerFlag, apiKeyFlag string, red, dim, green f
 				fmt.Println(dim("Get an OpenAI API key at: https://platform.openai.com/api-keys"))
 			case "openrouter":
 				fmt.Println(dim("Get an OpenRouter API key at: https://openrouter.ai/keys"))
+			case "anthropic":
+				fmt.Println(dim("Get an Anthropic API key at: https://console.anthropic.com"))
 			}
 			fmt.Println()
 
@@ -238,6 +250,12 @@ func selectGenerationProvider(providerFlag, apiKeyFlag string, red, dim, green f
 			Provider: "openrouter",
 			Model:    "openai/gpt-4o",
 			Fallback: "openai/gpt-3.5-turbo",
+		}
+	case "anthropic":
+		cfg = config.ProviderConfig{
+			Provider: "anthropic",
+			Model:    "claude-3-5-haiku-20241022",
+			Fallback: "claude-3-5-sonnet-20241022",
 		}
 	case "ollama":
 		cfg = config.ProviderConfig{

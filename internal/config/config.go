@@ -22,6 +22,10 @@ const (
 	KeyringOpenAIAPIKey = "openai_api_key"
 	// KeyringOpenRouterAPIKey is the keyring key for the OpenRouter API key.
 	KeyringOpenRouterAPIKey = "openrouter_api_key"
+	// KeyringAnthropicAPIKey is the keyring key for the Anthropic API key.
+	KeyringAnthropicAPIKey = "anthropic_api_key"
+	// KeyringVoyageAIAPIKey is the keyring key for the Voyage AI API key.
+	KeyringVoyageAIAPIKey = "voyageai_api_key"
 	// ConfigVersion is the current config file version.
 	ConfigVersion = 3
 )
@@ -274,6 +278,8 @@ func ClearConfig() error {
 	_ = defaultKeyring.Delete(KeyringService, KeyringGeminiAPIKey)
 	_ = defaultKeyring.Delete(KeyringService, KeyringOpenAIAPIKey)
 	_ = defaultKeyring.Delete(KeyringService, KeyringOpenRouterAPIKey)
+	_ = defaultKeyring.Delete(KeyringService, KeyringAnthropicAPIKey)
+	_ = defaultKeyring.Delete(KeyringService, KeyringVoyageAIAPIKey)
 
 	return nil
 }
@@ -320,6 +326,18 @@ func GetAPIKeyForProvider(provider string) (string, error) {
 			return "", ErrNotConfigured
 		}
 		return key, nil
+	case "anthropic":
+		key, err := defaultKeyring.Get(KeyringService, KeyringAnthropicAPIKey)
+		if err != nil {
+			return "", ErrNotConfigured
+		}
+		return key, nil
+	case "voyageai":
+		key, err := defaultKeyring.Get(KeyringService, KeyringVoyageAIAPIKey)
+		if err != nil {
+			return "", ErrNotConfigured
+		}
+		return key, nil
 	case "ollama":
 		// Ollama doesn't need an API key (local)
 		return "", nil
@@ -339,6 +357,10 @@ func SetAPIKeyForProvider(provider, key string) error {
 		return defaultKeyring.Set(KeyringService, KeyringOpenAIAPIKey, key)
 	case "openrouter":
 		return defaultKeyring.Set(KeyringService, KeyringOpenRouterAPIKey, key)
+	case "anthropic":
+		return defaultKeyring.Set(KeyringService, KeyringAnthropicAPIKey, key)
+	case "voyageai":
+		return defaultKeyring.Set(KeyringService, KeyringVoyageAIAPIKey, key)
 	case "ollama":
 		// Ollama doesn't need an API key
 		return nil

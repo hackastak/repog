@@ -41,10 +41,10 @@ func runSync(cmd *cobra.Command, args []string) error {
 	yellow := color.New(color.FgYellow).SprintFunc()
 	red := color.New(color.FgRed).SprintFunc()
 
-	// Require at least one of --owned or --starred
+	// Default to both if no flags specified
 	if !syncOwned && !syncStarred {
-		fmt.Fprintln(os.Stderr, red("Error: Specify --owned, --starred, or both."))
-		os.Exit(1)
+		syncOwned = true
+		syncStarred = true
 	}
 
 	// Load config

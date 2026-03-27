@@ -60,6 +60,31 @@ func hashPushedAt(s string) string {
 	return fmt.Sprintf("%x", sum)
 }
 
+// splitContent splits content into chunks if it exceeds the max size.
+// Using 25000 chars (~7500 tokens) to stay safely under OpenAI's 8192 token limit.
+// Based on observed ratio: 28000 chars ≈ 8400 tokens, so 25000 chars ≈ 7500 tokens.
+// Returns a slice of content chunks.
+func splitContent(content string, maxChars int) []string {
+	if maxChars <= 0 {
+		maxChars = 25000
+	}
+
+	if len(content) <= maxChars {
+		return []string{content}
+	}
+
+	var chunks []string
+	for i := 0; i < len(content); i += maxChars {
+		end := i + maxChars
+		if end > len(content) {
+			end = len(content)
+		}
+		chunks = append(chunks, content[i:end])
+	}
+
+	return chunks
+}
+
 // IngestRepos runs the full ingestion pipeline.
 // Events are sent to the returned channel as repos are processed.
 // The channel is closed when ingestion completes.
@@ -131,7 +156,7 @@ func IngestRepos(ctx context.Context, opts IngestOptions) <-chan IngestEvent {
 			if isExisting && opts.FullTree {
 				var count int
 				err := opts.DB.QueryRow(
-					"SELECT COUNT(*) FROM chunks WHERE repo_id = ? AND chunk_type = 'file_tree'",
+					"SELECT COUNT(*) FROM chunks WHERE repo_id = ? AND (chunk_type = 'file_tree' OR chunk_type LIKE 'file_tree_part_%')",
 					existingID,
 				).Scan(&count)
 				hasFileTree = err == nil && count > 0
@@ -277,30 +302,56 @@ func IngestRepos(ctx context.Context, opts IngestOptions) <-chan IngestEvent {
 				continue
 			}
 
-			// Insert readme chunk if present
+			// Insert readme chunk(s) if present
+			// Split into multiple chunks if too large
 			if readme != "" {
-				_, err = tx.Exec(
-					"INSERT INTO chunks (repo_id, chunk_type, content) VALUES (?, 'readme', ?)",
-					repoID, readme,
-				)
-				if err != nil {
-					_ = tx.Rollback()
-					errorCount++
-					eventCh <- IngestEvent{Type: "error", Repo: fullName, Reason: err.Error()}
+				readmeChunks := splitContent(readme, 25000)
+				readmeSuccess := true
+				for i, chunk := range readmeChunks {
+					chunkType := "readme"
+					if len(readmeChunks) > 1 {
+						chunkType = fmt.Sprintf("readme_part_%d", i+1)
+					}
+					_, err = tx.Exec(
+						"INSERT INTO chunks (repo_id, chunk_type, content) VALUES (?, ?, ?)",
+						repoID, chunkType, chunk,
+					)
+					if err != nil {
+						_ = tx.Rollback()
+						errorCount++
+						eventCh <- IngestEvent{Type: "error", Repo: fullName, Reason: err.Error()}
+						readmeSuccess = false
+						break
+					}
+				}
+				if !readmeSuccess {
 					continue
 				}
 			}
 
-			// Insert file_tree chunk if present
+			// Insert file_tree chunk(s) if present
+			// Split into multiple chunks if too large
 			if fileTree != "" {
-				_, err = tx.Exec(
-					"INSERT INTO chunks (repo_id, chunk_type, content) VALUES (?, 'file_tree', ?)",
-					repoID, fileTree,
-				)
-				if err != nil {
-					_ = tx.Rollback()
-					errorCount++
-					eventCh <- IngestEvent{Type: "error", Repo: fullName, Reason: err.Error()}
+				fileTreeChunks := splitContent(fileTree, 25000)
+				fileTreeSuccess := true
+				for i, chunk := range fileTreeChunks {
+					chunkType := "file_tree"
+					if len(fileTreeChunks) > 1 {
+						chunkType = fmt.Sprintf("file_tree_part_%d", i+1)
+					}
+					_, err = tx.Exec(
+						"INSERT INTO chunks (repo_id, chunk_type, content) VALUES (?, ?, ?)",
+						repoID, chunkType, chunk,
+					)
+					if err != nil {
+						_ = tx.Rollback()
+						errorCount++
+						eventCh <- IngestEvent{Type: "error", Repo: fullName, Reason: err.Error()}
+						fileTreeSuccess = false
+						break
+					}
+				}
+				if !fileTreeSuccess {
 					continue
 				}
 			}

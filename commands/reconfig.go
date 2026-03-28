@@ -224,62 +224,72 @@ func reconfigureEmbeddingProvider(current config.ProviderConfig, providerFlag, m
 		}
 	}
 
-	// Get model (prefill with current if same provider)
+	// Get model
 	if modelFlag != "" {
 		model = modelFlag
-	} else if selectedProvider == current.Provider {
+	} else {
+		// Determine default based on provider
+		var defaultModel string
+		if selectedProvider == current.Provider {
+			defaultModel = current.Model
+		} else {
+			switch selectedProvider {
+			case "gemini":
+				defaultModel = "gemini-embedding-2-preview"
+			case "openai":
+				defaultModel = "text-embedding-3-small"
+			case "openrouter":
+				defaultModel = "openai/text-embedding-3-small"
+			case "voyageai":
+				defaultModel = "voyage-code-3"
+			case "ollama":
+				defaultModel = "nomic-embed-text"
+			}
+		}
+
 		fmt.Println()
 		prompt := &survey.Input{
 			Message: "Model:",
-			Default: current.Model,
+			Default: defaultModel,
 		}
 		if err := survey.AskOne(prompt, &model); err != nil {
 			fmt.Println(red("✗"), "Failed to read input:", err)
 			os.Exit(1)
 		}
-	} else {
-		// Different provider, use defaults
-		switch selectedProvider {
-		case "gemini":
-			model = "gemini-embedding-2-preview"
-		case "openai":
-			model = "text-embedding-3-small"
-		case "openrouter":
-			model = "openai/text-embedding-3-small"
-		case "voyageai":
-			model = "voyage-code-3"
-		case "ollama":
-			model = "nomic-embed-text"
-		}
 	}
 
-	// Get dimensions (prefill with current if same provider)
+	// Get dimensions
 	if dimensionsFlag != 0 {
 		dimensions = dimensionsFlag
-	} else if selectedProvider == current.Provider {
+	} else {
+		// Determine default based on provider
+		var defaultDimensions int
+		if selectedProvider == current.Provider {
+			defaultDimensions = current.Dimensions
+		} else {
+			switch selectedProvider {
+			case "gemini":
+				defaultDimensions = 768
+			case "openai", "openrouter":
+				defaultDimensions = 1536
+			case "voyageai":
+				defaultDimensions = 1024
+			case "ollama":
+				defaultDimensions = 768
+			}
+		}
+
 		fmt.Println()
 		var dimStr string
 		prompt := &survey.Input{
 			Message: "Dimensions:",
-			Default: fmt.Sprintf("%d", current.Dimensions),
+			Default: fmt.Sprintf("%d", defaultDimensions),
 		}
 		if err := survey.AskOne(prompt, &dimStr); err != nil {
 			fmt.Println(red("✗"), "Failed to read input:", err)
 			os.Exit(1)
 		}
 		fmt.Sscanf(dimStr, "%d", &dimensions)
-	} else {
-		// Different provider, use defaults
-		switch selectedProvider {
-		case "gemini":
-			dimensions = 768
-		case "openai", "openrouter":
-			dimensions = 1536
-		case "voyageai":
-			dimensions = 1024
-		case "ollama":
-			dimensions = 768
-		}
 	}
 
 	// Get base URL for Ollama
@@ -408,57 +418,67 @@ func reconfigureGenerationProvider(current config.ProviderConfig, providerFlag, 
 		}
 	}
 
-	// Get model (prefill with current if same provider)
+	// Get model
 	if modelFlag != "" {
 		model = modelFlag
-	} else if selectedProvider == current.Provider {
+	} else {
+		// Determine default based on provider
+		var defaultModel string
+		if selectedProvider == current.Provider {
+			defaultModel = current.Model
+		} else {
+			switch selectedProvider {
+			case "gemini":
+				defaultModel = "gemini-2.5-flash"
+			case "openai":
+				defaultModel = "gpt-4o"
+			case "openrouter":
+				defaultModel = "openai/gpt-4o"
+			case "ollama":
+				defaultModel = "llama3.2"
+			}
+		}
+
 		fmt.Println()
 		prompt := &survey.Input{
 			Message: "Model:",
-			Default: current.Model,
+			Default: defaultModel,
 		}
 		if err := survey.AskOne(prompt, &model); err != nil {
 			fmt.Println(red("✗"), "Failed to read input:", err)
 			os.Exit(1)
 		}
-	} else {
-		// Different provider, use defaults
-		switch selectedProvider {
-		case "gemini":
-			model = "gemini-2.5-flash"
-		case "openai":
-			model = "gpt-4o"
-		case "openrouter":
-			model = "openai/gpt-4o"
-		case "ollama":
-			model = "llama3.2"
-		}
 	}
 
-	// Get fallback model (prefill with current if same provider)
+	// Get fallback model
 	if fallbackFlag != "" {
 		fallback = fallbackFlag
-	} else if selectedProvider == current.Provider {
+	} else {
+		// Determine default based on provider
+		var defaultFallback string
+		if selectedProvider == current.Provider {
+			defaultFallback = current.Fallback
+		} else {
+			switch selectedProvider {
+			case "gemini":
+				defaultFallback = "gemini-3.0-flash"
+			case "openai":
+				defaultFallback = "gpt-3.5-turbo"
+			case "openrouter":
+				defaultFallback = "openai/gpt-3.5-turbo"
+			case "ollama":
+				defaultFallback = "llama2"
+			}
+		}
+
 		fmt.Println()
 		prompt := &survey.Input{
 			Message: "Fallback Model:",
-			Default: current.Fallback,
+			Default: defaultFallback,
 		}
 		if err := survey.AskOne(prompt, &fallback); err != nil {
 			fmt.Println(red("✗"), "Failed to read input:", err)
 			os.Exit(1)
-		}
-	} else {
-		// Different provider, use defaults
-		switch selectedProvider {
-		case "gemini":
-			fallback = "gemini-3.0-flash"
-		case "openai":
-			fallback = "gpt-3.5-turbo"
-		case "openrouter":
-			fallback = "openai/gpt-3.5-turbo"
-		case "ollama":
-			fallback = "llama2"
 		}
 	}
 

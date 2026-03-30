@@ -80,6 +80,19 @@ func (o *OpenRouterEmbeddingProvider) BatchSize() int {
 	return o.batchSize
 }
 
+// MaxTokens returns the maximum token limit for the model
+func (o *OpenRouterEmbeddingProvider) MaxTokens() int {
+	// Token limits for common models routed through OpenRouter
+	switch o.model {
+	case "openai/text-embedding-3-small", "openai/text-embedding-3-large":
+		return 8191 // OpenAI's embedding models
+	case "openai/text-embedding-ada-002":
+		return 8191
+	default:
+		return 8191 // Safe default for most OpenAI models
+	}
+}
+
 // Validate tests the provider connection
 func (o *OpenRouterEmbeddingProvider) Validate(ctx context.Context) error {
 	// Make a test embed call with minimal content
@@ -107,10 +120,12 @@ func (o *OpenRouterEmbeddingProvider) EmbedChunks(ctx context.Context, chunks []
 		inputs[i] = chunk.Content
 	}
 
+	// Note: OpenRouter may not support dimensions parameter for some models
+	// Try without it first
 	reqBody := embeddingRequest{
-		Input:      inputs,
-		Model:      o.model,
-		Dimensions: o.dimensions,
+		Input: inputs,
+		Model: o.model,
+		// Dimensions: o.dimensions, // Commenting out to test if this causes 404
 	}
 
 	bodyBytes, err := json.Marshal(reqBody)
@@ -174,6 +189,27 @@ func (o *OpenRouterEmbeddingProvider) EmbedChunks(ctx context.Context, chunks []
 	}
 
 	if resp.StatusCode != 200 {
+		// Try to parse error response for better error message
+		var errResp embeddingResponse
+		if err := json.Unmarshal(respBody, &errResp); err == nil && errResp.Error != nil {
+			// Log chunk details for debugging
+			var chunkLengths []int
+			for _, chunk := range chunks {
+				chunkLengths = append(chunkLengths, len(chunk.Content))
+			}
+			err := fmt.Errorf("OpenRouter API error: %s (code: %v, status: %s, model: %s, batch_size: %d, chunk_lengths: %v)",
+				errResp.Error.Message, errResp.Error.Code, resp.Status, o.model, len(chunks), chunkLengths)
+			result.Errors = len(chunks)
+			for _, chunk := range chunks {
+				result.Results = append(result.Results, provider.EmbedResult{
+					ID:        chunk.ID,
+					Embedding: nil,
+					Error:     err,
+				})
+			}
+			return result
+		}
+		// Fall back to raw response body
 		err := fmt.Errorf("API error: %s - %s", resp.Status, string(respBody))
 		result.Errors = len(chunks)
 		for _, chunk := range chunks {
@@ -199,14 +235,29 @@ func (o *OpenRouterEmbeddingProvider) EmbedChunks(ctx context.Context, chunks []
 		return result
 	}
 
+	// Check for API errors in response
+	if embedResp.Error != nil {
+		err := fmt.Errorf("API error: %s (code: %v)", embedResp.Error.Message, embedResp.Error.Code)
+		result.Errors = len(chunks)
+		for _, chunk := range chunks {
+			result.Results = append(result.Results, provider.EmbedResult{
+				ID:        chunk.ID,
+				Embedding: nil,
+				Error:     err,
+			})
+		}
+		return result
+	}
+
 	// Process results - OpenRouter returns embeddings in order
 	for i, chunk := range chunks {
 		if i >= len(embedResp.Data) {
 			result.Errors++
+			missingErr := fmt.Errorf("API returned %d embeddings for %d chunks (model: %s)", len(embedResp.Data), len(chunks), o.model)
 			result.Results = append(result.Results, provider.EmbedResult{
 				ID:        chunk.ID,
 				Embedding: nil,
-				Error:     fmt.Errorf("no embedding returned from API"),
+				Error:     missingErr,
 			})
 			continue
 		}
@@ -294,6 +345,12 @@ type embeddingRequest struct {
 type embeddingResponse struct {
 	Data  []embeddingData `json:"data"`
 	Usage usageInfo       `json:"usage"`
+	Error *apiError       `json:"error,omitempty"`
+}
+
+type apiError struct {
+	Message string      `json:"message"`
+	Code    interface{} `json:"code"` // Can be string or number
 }
 
 type embeddingData struct {

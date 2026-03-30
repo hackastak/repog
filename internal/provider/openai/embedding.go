@@ -80,6 +80,11 @@ func (o *OpenAIEmbeddingProvider) BatchSize() int {
 	return o.batchSize
 }
 
+// MaxTokens returns the maximum token limit for the model
+func (o *OpenAIEmbeddingProvider) MaxTokens() int {
+	return 8191 // OpenAI embedding models support up to 8191 tokens
+}
+
 // Validate tests the provider connection
 func (o *OpenAIEmbeddingProvider) Validate(ctx context.Context) error {
 	// Make a test embed call with minimal content

@@ -17,6 +17,7 @@ type IngestOptions struct {
 	IncludeOwned   bool
 	IncludeStarred bool
 	FullTree       bool
+	MaxChunkSize   int // Maximum characters per chunk (calculated from embedding model token limit)
 	DB             *sql.DB
 	GitHubPAT      string
 }
@@ -60,10 +61,23 @@ func hashPushedAt(s string) string {
 	return fmt.Sprintf("%x", sum)
 }
 
+// CalculateMaxCharsFromTokens calculates the maximum characters based on token limit.
+// Uses a conservative ratio of ~3.3 characters per token to stay safely under limits.
+// This accounts for worst-case scenarios with special characters and encoding overhead.
+func CalculateMaxCharsFromTokens(maxTokens int) int {
+	if maxTokens <= 0 {
+		return 25000 // Fallback to original default
+	}
+	// Use 90% of token limit to provide safety margin
+	safeTokens := int(float64(maxTokens) * 0.90)
+	// Conservative ratio: 3.3 chars per token
+	// (Real-world average is ~4 chars/token, but we want to be safe)
+	return safeTokens * 3
+}
+
 // splitContent splits content into chunks if it exceeds the max size.
-// Using 25000 chars (~7500 tokens) to stay safely under OpenAI's 8192 token limit.
-// Based on observed ratio: 28000 chars ≈ 8400 tokens, so 25000 chars ≈ 7500 tokens.
-// Returns a slice of content chunks.
+// maxChars should be calculated using calculateMaxCharsFromTokens() based on the
+// embedding provider's token limit. Returns a slice of content chunks.
 func splitContent(content string, maxChars int) []string {
 	if maxChars <= 0 {
 		maxChars = 25000
@@ -305,7 +319,11 @@ func IngestRepos(ctx context.Context, opts IngestOptions) <-chan IngestEvent {
 			// Insert readme chunk(s) if present
 			// Split into multiple chunks if too large
 			if readme != "" {
-				readmeChunks := splitContent(readme, 25000)
+				chunkSize := opts.MaxChunkSize
+				if chunkSize <= 0 {
+					chunkSize = 25000 // Fallback to default
+				}
+				readmeChunks := splitContent(readme, chunkSize)
 				readmeSuccess := true
 				for i, chunk := range readmeChunks {
 					chunkType := "readme"
@@ -332,7 +350,11 @@ func IngestRepos(ctx context.Context, opts IngestOptions) <-chan IngestEvent {
 			// Insert file_tree chunk(s) if present
 			// Split into multiple chunks if too large
 			if fileTree != "" {
-				fileTreeChunks := splitContent(fileTree, 25000)
+				chunkSize := opts.MaxChunkSize
+				if chunkSize <= 0 {
+					chunkSize = 25000 // Fallback to default
+				}
+				fileTreeChunks := splitContent(fileTree, chunkSize)
 				fileTreeSuccess := true
 				for i, chunk := range fileTreeChunks {
 					chunkType := "file_tree"

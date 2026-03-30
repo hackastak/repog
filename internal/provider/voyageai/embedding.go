@@ -83,6 +83,19 @@ func (v *VoyageAIEmbeddingProvider) BatchSize() int {
 	return v.batchSize
 }
 
+// MaxTokens returns the maximum token limit for the model
+func (v *VoyageAIEmbeddingProvider) MaxTokens() int {
+	// Voyage AI models support different token limits
+	switch v.model {
+	case "voyage-code-3":
+		return 16000
+	case "voyage-3", "voyage-3-lite":
+		return 32000
+	default:
+		return 4000 // Conservative default
+	}
+}
+
 // Validate tests the provider connection
 func (v *VoyageAIEmbeddingProvider) Validate(ctx context.Context) error {
 	// Make a test embed call with minimal content

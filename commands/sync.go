@@ -12,6 +12,12 @@ import (
 
 	"github.com/hackastak/repog/internal/config"
 	"github.com/hackastak/repog/internal/db"
+	"github.com/hackastak/repog/internal/provider"
+	_ "github.com/hackastak/repog/internal/provider/gemini"
+	_ "github.com/hackastak/repog/internal/provider/ollama"
+	_ "github.com/hackastak/repog/internal/provider/openai"
+	_ "github.com/hackastak/repog/internal/provider/openrouter"
+	_ "github.com/hackastak/repog/internal/provider/voyageai"
 	"github.com/hackastak/repog/internal/sync"
 )
 
@@ -68,6 +74,25 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 	defer func() { _ = database.Close() }()
 
+	// Calculate chunk size based on embedding provider's token limit
+	embeddingAPIKey, err := config.GetAPIKeyForProvider(cfg.Embedding.Provider)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, red("Failed to get embedding API key:"), err)
+		os.Exit(1)
+	}
+
+	embedProvider, err := provider.NewEmbeddingProvider(cfg.Embedding, embeddingAPIKey)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, red("Failed to create embedding provider:"), err)
+		os.Exit(1)
+	}
+
+	maxChunkSize := sync.CalculateMaxCharsFromTokens(embedProvider.MaxTokens())
+
+	if syncVerbose {
+		fmt.Printf("Using chunk size: %d characters (based on %d token limit)\n", maxChunkSize, embedProvider.MaxTokens())
+	}
+
 	// Start ingestion
 	var s *spinner.Spinner
 	if !syncVerbose {
@@ -82,6 +107,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		IncludeOwned:   syncOwned,
 		IncludeStarred: syncStarred,
 		FullTree:       syncFullTree,
+		MaxChunkSize:   maxChunkSize,
 		DB:             database,
 		GitHubPAT:      githubPAT,
 	})

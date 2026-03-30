@@ -90,9 +90,15 @@ func runEmbed(cmd *cobra.Command, args []string) error {
 			if embedVerbose {
 				fmt.Printf("Batch %d/%d: %d embedded, %d skipped, %d errors\n",
 					event.BatchIndex, event.BatchTotal, event.ChunksEmbedded, event.ChunksSkipped, event.ChunksErrored)
-				// Show first unique error from this batch
+				// Show unique errors from this batch
 				if len(event.Errors) > 0 {
-					fmt.Println(red("  Error:"), event.Errors[0])
+					uniqueErrors := make(map[string]bool)
+					for _, err := range event.Errors {
+						if !uniqueErrors[err] {
+							fmt.Println(red("  Error:"), err)
+							uniqueErrors[err] = true
+						}
+					}
 				}
 			} else if s != nil {
 				progress := float64(event.BatchIndex) / float64(event.BatchTotal) * 100

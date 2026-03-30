@@ -21,6 +21,7 @@ import (
 	_ "github.com/hackastak/repog/internal/provider/openai"
 	_ "github.com/hackastak/repog/internal/provider/openrouter"
 	_ "github.com/hackastak/repog/internal/provider/voyageai"
+	"github.com/hackastak/repog/internal/sync"
 )
 
 var reconfigCmd = &cobra.Command{
@@ -100,16 +101,47 @@ func runReconfig(cmd *cobra.Command, args []string) error {
 			originalEmbedding.Model != newEmbedCfg.Model ||
 			originalEmbedding.Dimensions != newEmbedCfg.Dimensions
 
+		// Calculate chunk sizes to detect if they changed
+		var oldChunkSize, newChunkSize int
+		var chunkSizeChanged bool
+
 		if embeddingChanged {
-			// Warn about clearing embeddings
+			// Get old provider's token limit
+			oldAPIKey, _ := config.GetAPIKeyForProvider(originalEmbedding.Provider)
+			if oldProvider, err := provider.NewEmbeddingProvider(originalEmbedding, oldAPIKey); err == nil {
+				oldChunkSize = sync.CalculateMaxCharsFromTokens(oldProvider.MaxTokens())
+			}
+
+			// Get new provider's token limit
+			if newProvider, err := provider.NewEmbeddingProvider(newEmbedCfg, newEmbedAPIKey); err == nil {
+				newChunkSize = sync.CalculateMaxCharsFromTokens(newProvider.MaxTokens())
+			}
+
+			chunkSizeChanged = oldChunkSize != newChunkSize && oldChunkSize > 0 && newChunkSize > 0
+		}
+
+		if embeddingChanged {
+			// Warn about clearing embeddings and potentially chunks
 			fmt.Println()
 			fmt.Println(yellow("⚠️  Warning: Embedding configuration has changed"))
 			fmt.Println()
 			fmt.Println("  Previous:", fmt.Sprintf("%s (%s, %dd)", originalEmbedding.Provider, originalEmbedding.Model, originalEmbedding.Dimensions))
 			fmt.Println("  New:     ", fmt.Sprintf("%s (%s, %dd)", newEmbedCfg.Provider, newEmbedCfg.Model, newEmbedCfg.Dimensions))
 			fmt.Println()
-			fmt.Println(yellow("  This will delete ALL existing embeddings."))
-			fmt.Println(dim("  You'll need to run `repog embed` to regenerate them."))
+
+			if chunkSizeChanged {
+				fmt.Println(yellow("  ⚠️  Chunk size will change:"))
+				fmt.Println(fmt.Sprintf("     Previous: %d characters", oldChunkSize))
+				fmt.Println(fmt.Sprintf("     New:      %d characters", newChunkSize))
+				fmt.Println()
+				fmt.Println(yellow("  This will delete ALL existing embeddings AND chunks."))
+				fmt.Println(dim("  You'll need to run:"))
+				fmt.Println(dim("    1. repog sync --owned --starred  (to re-chunk with new size)"))
+				fmt.Println(dim("    2. repog embed                   (to generate new embeddings)"))
+			} else {
+				fmt.Println(yellow("  This will delete ALL existing embeddings."))
+				fmt.Println(dim("  You'll need to run `repog embed` to regenerate them."))
+			}
 			fmt.Println()
 
 			var confirmed bool
@@ -122,7 +154,7 @@ func runReconfig(cmd *cobra.Command, args []string) error {
 				return nil
 			}
 
-			// Clear embeddings
+			// Open database
 			database, err := db.Open(cfg.DBPath, originalEmbedding.Dimensions)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, red("Failed to open database:", err))
@@ -130,6 +162,8 @@ func runReconfig(cmd *cobra.Command, args []string) error {
 			}
 
 			s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
+
+			// Clear embeddings
 			s.Suffix = " Clearing embeddings..."
 			s.Start()
 
@@ -140,9 +174,26 @@ func runReconfig(cmd *cobra.Command, args []string) error {
 				os.Exit(1)
 			}
 
-			_ = database.Close()
 			s.Stop()
 			fmt.Println(green("✓"), "Embeddings cleared")
+
+			// Clear chunks if chunk size changed
+			if chunkSizeChanged {
+				s.Suffix = " Clearing chunks..."
+				s.Start()
+
+				if err := clearChunks(database); err != nil {
+					s.Stop()
+					fmt.Fprintln(os.Stderr, red("Failed to clear chunks:", err))
+					_ = database.Close()
+					os.Exit(1)
+				}
+
+				s.Stop()
+				fmt.Println(green("✓"), "Chunks cleared")
+			}
+
+			_ = database.Close()
 		}
 
 		// Update config
@@ -602,6 +653,26 @@ func clearEmbeddings(database *sql.DB, newDimensions int) error {
 
 	// Update stored dimensions in meta table
 	if err := db.SetEmbeddingDimensions(database, newDimensions); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// clearChunks deletes all chunks and resets repo sync state
+func clearChunks(database *sql.DB) error {
+	// Delete all chunks
+	if _, err := database.Exec("DELETE FROM chunks"); err != nil {
+		return err
+	}
+
+	// Reset repo sync state to force re-sync
+	if _, err := database.Exec("UPDATE repos SET pushed_at_hash = NULL, embedded_hash = NULL, embedded_at = NULL"); err != nil {
+		return err
+	}
+
+	// Clear sync state
+	if _, err := database.Exec("DELETE FROM sync_state"); err != nil {
 		return err
 	}
 

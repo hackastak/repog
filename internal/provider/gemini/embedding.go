@@ -70,6 +70,11 @@ func (g *GeminiEmbeddingProvider) BatchSize() int {
 	return g.batchSize
 }
 
+// MaxTokens returns the maximum token limit for the model
+func (g *GeminiEmbeddingProvider) MaxTokens() int {
+	return 2048 // Gemini embedding models support up to 2048 tokens
+}
+
 // Validate tests the provider connection
 func (g *GeminiEmbeddingProvider) Validate(ctx context.Context) error {
 	// Make a test embed call with minimal content

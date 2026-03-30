@@ -78,6 +78,13 @@ func (o *OllamaEmbeddingProvider) BatchSize() int {
 	return o.batchSize
 }
 
+// MaxTokens returns the maximum token limit for the model
+func (o *OllamaEmbeddingProvider) MaxTokens() int {
+	// Ollama models vary, use conservative default
+	// Most models support 2048-8192 tokens
+	return 2048
+}
+
 // Validate tests the provider connection
 func (o *OllamaEmbeddingProvider) Validate(ctx context.Context) error {
 	// Make a test embed call with minimal content

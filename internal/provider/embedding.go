@@ -13,6 +13,9 @@ type EmbeddingProvider interface {
 	// BatchSize returns the maximum batch size for embedding requests
 	BatchSize() int
 
+	// MaxTokens returns the maximum token limit for this model
+	MaxTokens() int
+
 	// EmbedChunks embeds multiple chunks in a batch
 	EmbedChunks(ctx context.Context, chunks []EmbedRequest) BatchEmbedResult
 

@@ -22,6 +22,43 @@ func init() {
 
 const defaultBaseURL = "https://api.voyageai.com/v1"
 
+// VoyageAIModelSpec holds default specifications for a Voyage AI embedding model
+type VoyageAIModelSpec struct {
+	Dimensions int
+	MaxTokens  int
+}
+
+// voyageaiModelDefaults contains defaults for Voyage AI embedding models.
+// Based on Voyage AI documentation.
+var voyageaiModelDefaults = map[string]VoyageAIModelSpec{
+	// Voyage 3 series (latest, 32k context)
+	"voyage-3":      {Dimensions: 1024, MaxTokens: 32000},
+	"voyage-3-lite": {Dimensions: 512, MaxTokens: 32000},
+
+	// Voyage Code 3 (optimized for code, 16k context)
+	"voyage-code-3": {Dimensions: 1024, MaxTokens: 16000},
+
+	// Voyage 2 series (legacy)
+	"voyage-2":       {Dimensions: 1024, MaxTokens: 4000},
+	"voyage-large-2": {Dimensions: 1536, MaxTokens: 16000},
+	"voyage-code-2":  {Dimensions: 1536, MaxTokens: 16000},
+
+	// Domain-specific models
+	"voyage-finance-2": {Dimensions: 1024, MaxTokens: 4000},
+	"voyage-law-2":     {Dimensions: 1024, MaxTokens: 4000},
+}
+
+// defaultVoyageAIModelSpec is used for unknown models
+var defaultVoyageAIModelSpec = VoyageAIModelSpec{Dimensions: 1024, MaxTokens: 4000}
+
+// getVoyageAIModelSpec returns the spec for a model, falling back to defaults
+func getVoyageAIModelSpec(model string) VoyageAIModelSpec {
+	if spec, ok := voyageaiModelDefaults[model]; ok {
+		return spec
+	}
+	return defaultVoyageAIModelSpec
+}
+
 // VoyageAIEmbeddingProvider implements the EmbeddingProvider interface for Voyage AI
 type VoyageAIEmbeddingProvider struct {
 	apiKey     string
@@ -40,23 +77,9 @@ func NewVoyageAIEmbeddingProvider(apiKey, model string, dimensions int) (*Voyage
 		model = "voyage-code-3" // Default model for code embeddings
 	}
 	if dimensions == 0 {
-		// Default dimensions for common models
-		switch model {
-		case "voyage-3":
-			dimensions = 1024
-		case "voyage-3-lite":
-			dimensions = 512
-		case "voyage-code-3":
-			dimensions = 1024
-		case "voyage-finance-2":
-			dimensions = 1024
-		case "voyage-law-2":
-			dimensions = 1024
-		case "voyage-2":
-			dimensions = 1024
-		default:
-			dimensions = 1024 // Safe default
-		}
+		// Use model spec defaults
+		spec := getVoyageAIModelSpec(model)
+		dimensions = spec.Dimensions
 	}
 
 	return &VoyageAIEmbeddingProvider{
@@ -85,15 +108,8 @@ func (v *VoyageAIEmbeddingProvider) BatchSize() int {
 
 // MaxTokens returns the maximum token limit for the model
 func (v *VoyageAIEmbeddingProvider) MaxTokens() int {
-	// Voyage AI models support different token limits
-	switch v.model {
-	case "voyage-code-3":
-		return 16000
-	case "voyage-3", "voyage-3-lite":
-		return 32000
-	default:
-		return 4000 // Conservative default
-	}
+	spec := getVoyageAIModelSpec(v.model)
+	return spec.MaxTokens
 }
 
 // Validate tests the provider connection

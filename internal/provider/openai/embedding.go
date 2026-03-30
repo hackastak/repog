@@ -25,6 +25,34 @@ func init() {
 
 const defaultBaseURL = "https://api.openai.com/v1"
 
+// OpenAIModelSpec holds default specifications for an OpenAI embedding model
+type OpenAIModelSpec struct {
+	Dimensions int
+	MaxTokens  int
+}
+
+// openaiModelDefaults contains defaults for OpenAI embedding models.
+// All current OpenAI embedding models support 8191 tokens.
+var openaiModelDefaults = map[string]OpenAIModelSpec{
+	// text-embedding-3 series (latest)
+	"text-embedding-3-small": {Dimensions: 1536, MaxTokens: 8191},
+	"text-embedding-3-large": {Dimensions: 3072, MaxTokens: 8191},
+
+	// text-embedding-ada-002 (legacy but still popular)
+	"text-embedding-ada-002": {Dimensions: 1536, MaxTokens: 8191},
+}
+
+// defaultOpenAIModelSpec is used for unknown models
+var defaultOpenAIModelSpec = OpenAIModelSpec{Dimensions: 1536, MaxTokens: 8191}
+
+// getOpenAIModelSpec returns the spec for a model, falling back to defaults
+func getOpenAIModelSpec(model string) OpenAIModelSpec {
+	if spec, ok := openaiModelDefaults[model]; ok {
+		return spec
+	}
+	return defaultOpenAIModelSpec
+}
+
 // OpenAIEmbeddingProvider implements the EmbeddingProvider interface for OpenAI
 type OpenAIEmbeddingProvider struct {
 	apiKey     string
@@ -43,17 +71,9 @@ func NewOpenAIEmbeddingProvider(apiKey, model string, dimensions int) (*OpenAIEm
 		model = "text-embedding-3-small" // Default model
 	}
 	if dimensions == 0 {
-		// Default dimensions for common models
-		switch model {
-		case "text-embedding-3-small":
-			dimensions = 1536
-		case "text-embedding-3-large":
-			dimensions = 3072
-		case "text-embedding-ada-002":
-			dimensions = 1536
-		default:
-			dimensions = 1536 // Safe default
-		}
+		// Use model spec defaults
+		spec := getOpenAIModelSpec(model)
+		dimensions = spec.Dimensions
 	}
 
 	return &OpenAIEmbeddingProvider{
@@ -82,7 +102,8 @@ func (o *OpenAIEmbeddingProvider) BatchSize() int {
 
 // MaxTokens returns the maximum token limit for the model
 func (o *OpenAIEmbeddingProvider) MaxTokens() int {
-	return 8191 // OpenAI embedding models support up to 8191 tokens
+	spec := getOpenAIModelSpec(o.model)
+	return spec.MaxTokens
 }
 
 // Validate tests the provider connection

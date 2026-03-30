@@ -25,6 +25,41 @@ func init() {
 
 const defaultBaseURL = "https://openrouter.ai/api/v1"
 
+// OpenRouterModelSpec holds default specifications for an OpenRouter embedding model
+type OpenRouterModelSpec struct {
+	Dimensions int
+	MaxTokens  int
+}
+
+// openrouterModelDefaults contains defaults for embedding models available via OpenRouter.
+// OpenRouter routes to various providers, so specs match the underlying models.
+var openrouterModelDefaults = map[string]OpenRouterModelSpec{
+	// OpenAI models via OpenRouter
+	"openai/text-embedding-3-small": {Dimensions: 1536, MaxTokens: 8191},
+	"openai/text-embedding-3-large": {Dimensions: 3072, MaxTokens: 8191},
+	"openai/text-embedding-ada-002": {Dimensions: 1536, MaxTokens: 8191},
+
+	// Cohere models via OpenRouter
+	"cohere/embed-english-v3.0":       {Dimensions: 1024, MaxTokens: 512},
+	"cohere/embed-multilingual-v3.0":  {Dimensions: 1024, MaxTokens: 512},
+	"cohere/embed-english-light-v3.0": {Dimensions: 384, MaxTokens: 512},
+
+	// Voyage AI models via OpenRouter
+	"voyageai/voyage-3":      {Dimensions: 1024, MaxTokens: 32000},
+	"voyageai/voyage-code-3": {Dimensions: 1024, MaxTokens: 16000},
+}
+
+// defaultOpenRouterModelSpec is used for unknown models
+var defaultOpenRouterModelSpec = OpenRouterModelSpec{Dimensions: 1536, MaxTokens: 8191}
+
+// getOpenRouterModelSpec returns the spec for a model, falling back to defaults
+func getOpenRouterModelSpec(model string) OpenRouterModelSpec {
+	if spec, ok := openrouterModelDefaults[model]; ok {
+		return spec
+	}
+	return defaultOpenRouterModelSpec
+}
+
 // OpenRouterEmbeddingProvider implements the EmbeddingProvider interface for OpenRouter
 type OpenRouterEmbeddingProvider struct {
 	apiKey     string
@@ -43,17 +78,9 @@ func NewOpenRouterEmbeddingProvider(apiKey, model string, dimensions int) (*Open
 		model = "openai/text-embedding-3-small" // Default model
 	}
 	if dimensions == 0 {
-		// Default dimensions for common models
-		switch model {
-		case "openai/text-embedding-3-small":
-			dimensions = 1536
-		case "openai/text-embedding-3-large":
-			dimensions = 3072
-		case "text-embedding-ada-002":
-			dimensions = 1536
-		default:
-			dimensions = 1536 // Safe default
-		}
+		// Use model spec defaults
+		spec := getOpenRouterModelSpec(model)
+		dimensions = spec.Dimensions
 	}
 
 	return &OpenRouterEmbeddingProvider{
@@ -82,15 +109,8 @@ func (o *OpenRouterEmbeddingProvider) BatchSize() int {
 
 // MaxTokens returns the maximum token limit for the model
 func (o *OpenRouterEmbeddingProvider) MaxTokens() int {
-	// Token limits for common models routed through OpenRouter
-	switch o.model {
-	case "openai/text-embedding-3-small", "openai/text-embedding-3-large":
-		return 8191 // OpenAI's embedding models
-	case "openai/text-embedding-ada-002":
-		return 8191
-	default:
-		return 8191 // Safe default for most OpenAI models
-	}
+	spec := getOpenRouterModelSpec(o.model)
+	return spec.MaxTokens
 }
 
 // Validate tests the provider connection

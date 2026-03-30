@@ -25,6 +25,40 @@ func init() {
 
 const defaultBaseURL = "https://generativelanguage.googleapis.com/v1beta"
 
+// GeminiModelSpec holds default specifications for a Gemini embedding model
+type GeminiModelSpec struct {
+	Dimensions int
+	MaxTokens  int
+}
+
+// geminiModelDefaults contains defaults for Gemini embedding models.
+// Based on Google AI documentation: https://ai.google.dev/gemini-api/docs/models
+var geminiModelDefaults = map[string]GeminiModelSpec{
+	// Gemini Embedding 2.0 (multimodal, 8k context)
+	// Native 3072 dims, but supports variable output via OutputDimensionality
+	"gemini-embedding-2-preview": {Dimensions: 3072, MaxTokens: 8192},
+
+	// Gemini Embedding 001 (text-only, 2k context)
+	"gemini-embedding-001": {Dimensions: 3072, MaxTokens: 2048},
+
+	// Text Embedding 004 (legacy)
+	"text-embedding-004": {Dimensions: 768, MaxTokens: 2048},
+
+	// Legacy embedding-001
+	"embedding-001": {Dimensions: 768, MaxTokens: 2048},
+}
+
+// defaultGeminiModelSpec is used for unknown models
+var defaultGeminiModelSpec = GeminiModelSpec{Dimensions: 3072, MaxTokens: 8192}
+
+// getGeminiModelSpec returns the spec for a model, falling back to defaults
+func getGeminiModelSpec(model string) GeminiModelSpec {
+	if spec, ok := geminiModelDefaults[model]; ok {
+		return spec
+	}
+	return defaultGeminiModelSpec
+}
+
 // GeminiEmbeddingProvider implements the EmbeddingProvider interface for Gemini
 type GeminiEmbeddingProvider struct {
 	apiKey     string
@@ -43,7 +77,9 @@ func NewGeminiEmbeddingProvider(apiKey, model string, dimensions int) (*GeminiEm
 		model = "gemini-embedding-2-preview"
 	}
 	if dimensions == 0 {
-		dimensions = 768
+		// Use model spec defaults
+		spec := getGeminiModelSpec(model)
+		dimensions = spec.Dimensions
 	}
 
 	return &GeminiEmbeddingProvider{
@@ -72,7 +108,8 @@ func (g *GeminiEmbeddingProvider) BatchSize() int {
 
 // MaxTokens returns the maximum token limit for the model
 func (g *GeminiEmbeddingProvider) MaxTokens() int {
-	return 2048 // Gemini embedding models support up to 2048 tokens
+	spec := getGeminiModelSpec(g.model)
+	return spec.MaxTokens
 }
 
 // Validate tests the provider connection

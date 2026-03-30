@@ -25,6 +25,82 @@ func init() {
 
 const defaultBaseURL = "http://localhost:11434"
 
+// OllamaModelSpec holds default specifications for an Ollama embedding model
+type OllamaModelSpec struct {
+	Dimensions int
+	MaxTokens  int
+}
+
+// ollamaModelDefaults contains defaults for popular Ollama embedding models.
+// Token limits are based on model documentation and HuggingFace model cards.
+var ollamaModelDefaults = map[string]OllamaModelSpec{
+	// nomic-embed-text variants: 8k context, 768 dimensions
+	"nomic-embed-text":        {Dimensions: 768, MaxTokens: 8192},
+	"nomic-embed-text:latest": {Dimensions: 768, MaxTokens: 8192},
+	"nomic-embed-text:v1":     {Dimensions: 768, MaxTokens: 8192},
+	"nomic-embed-text:v1.5":   {Dimensions: 768, MaxTokens: 8192},
+
+	// mxbai-embed-large: mixedbread.ai large model, 512 context
+	"mxbai-embed-large":        {Dimensions: 1024, MaxTokens: 512},
+	"mxbai-embed-large:latest": {Dimensions: 1024, MaxTokens: 512},
+
+	// all-minilm: Lightweight model, optimized for 256 tokens
+	"all-minilm":        {Dimensions: 384, MaxTokens: 256},
+	"all-minilm:latest": {Dimensions: 384, MaxTokens: 256},
+	"all-minilm:l6-v2":  {Dimensions: 384, MaxTokens: 256},
+
+	// snowflake-arctic-embed v1 variants: 512 context
+	"snowflake-arctic-embed":        {Dimensions: 1024, MaxTokens: 512},
+	"snowflake-arctic-embed:l":      {Dimensions: 1024, MaxTokens: 512},
+	"snowflake-arctic-embed:m":      {Dimensions: 768, MaxTokens: 512},
+	"snowflake-arctic-embed:s":      {Dimensions: 384, MaxTokens: 512},
+	"snowflake-arctic-embed:latest": {Dimensions: 1024, MaxTokens: 512},
+
+	// snowflake-arctic-embed v2 variants: 8k context with RoPE
+	"snowflake-arctic-embed:l-v2.0":      {Dimensions: 1024, MaxTokens: 8192},
+	"snowflake-arctic-embed:m-v2.0":      {Dimensions: 768, MaxTokens: 8192},
+	"snowflake-arctic-embed2":            {Dimensions: 1024, MaxTokens: 8192},
+	"snowflake-arctic-embed-l-v2.0":      {Dimensions: 1024, MaxTokens: 8192},
+	"snowflake-arctic-embed-m-v2.0":      {Dimensions: 768, MaxTokens: 8192},
+	"snowflake-arctic-embed:m-long":      {Dimensions: 768, MaxTokens: 2048},
+
+	// BGE models from BAAI
+	"bge-m3":            {Dimensions: 1024, MaxTokens: 8192},
+	"bge-m3:latest":     {Dimensions: 1024, MaxTokens: 8192},
+	"bge-large":         {Dimensions: 1024, MaxTokens: 512},
+	"bge-large:latest":  {Dimensions: 1024, MaxTokens: 512},
+	"bge-large:en-v1.5": {Dimensions: 1024, MaxTokens: 512},
+	"bge-base":          {Dimensions: 768, MaxTokens: 512},
+	"bge-base:en-v1.5":  {Dimensions: 768, MaxTokens: 512},
+	"bge-small":         {Dimensions: 384, MaxTokens: 512},
+	"bge-small:en-v1.5": {Dimensions: 384, MaxTokens: 512},
+
+	// E5 models
+	"e5-mistral-7b-instruct": {Dimensions: 4096, MaxTokens: 32768},
+
+	// Jina embeddings v2: 8k context
+	"jina-embeddings-v2-base-en":  {Dimensions: 768, MaxTokens: 8192},
+	"jina-embeddings-v2-small-en": {Dimensions: 512, MaxTokens: 8192},
+
+	// Granite embedding
+	"granite-embedding":        {Dimensions: 1024, MaxTokens: 512},
+	"granite-embedding:latest": {Dimensions: 1024, MaxTokens: 512},
+
+	// Paraphrase models
+	"paraphrase-multilingual": {Dimensions: 768, MaxTokens: 512},
+}
+
+// defaultModelSpec is used for unknown models
+var defaultModelSpec = OllamaModelSpec{Dimensions: 768, MaxTokens: 2048}
+
+// getModelSpec returns the spec for a model, falling back to defaults
+func getModelSpec(model string) OllamaModelSpec {
+	if spec, ok := ollamaModelDefaults[model]; ok {
+		return spec
+	}
+	return defaultModelSpec
+}
+
 // OllamaEmbeddingProvider implements the EmbeddingProvider interface for Ollama
 type OllamaEmbeddingProvider struct {
 	model      string
@@ -42,17 +118,9 @@ func NewOllamaEmbeddingProvider(model string, dimensions int, baseURL string) (*
 		baseURL = defaultBaseURL
 	}
 	if dimensions == 0 {
-		// Default dimensions for common models
-		switch model {
-		case "nomic-embed-text":
-			dimensions = 768
-		case "mxbai-embed-large":
-			dimensions = 1024
-		case "all-minilm":
-			dimensions = 384
-		default:
-			dimensions = 768 // Safe default
-		}
+		// Use model spec defaults
+		spec := getModelSpec(model)
+		dimensions = spec.Dimensions
 	}
 
 	return &OllamaEmbeddingProvider{
@@ -80,9 +148,8 @@ func (o *OllamaEmbeddingProvider) BatchSize() int {
 
 // MaxTokens returns the maximum token limit for the model
 func (o *OllamaEmbeddingProvider) MaxTokens() int {
-	// Ollama models vary, use conservative default
-	// Most models support 2048-8192 tokens
-	return 2048
+	spec := getModelSpec(o.model)
+	return spec.MaxTokens
 }
 
 // Validate tests the provider connection

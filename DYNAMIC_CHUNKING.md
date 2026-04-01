@@ -42,8 +42,8 @@ If you switch to a provider with a **different chunk size**, RepoG will:
 
      This will delete ALL existing embeddings AND chunks.
      You'll need to run:
-       1. repog sync --owned --starred  (to re-chunk with new size)
-       2. repog embed                   (to generate new embeddings)
+       1. repog sync  (to re-chunk with new size)
+       2. repog embed (to generate new embeddings)
 
    ? Continue with reconfiguration? (y/N)
    ```
@@ -66,7 +66,7 @@ $ ./repog reconfig embedding
 # Chunk size changes: 22,113 → 5,529 chars
 # Warning shown, data cleared
 
-$ ./repog sync --owned --starred
+$ ./repog sync
 # Re-syncs with smaller chunks
 
 $ ./repog embed
@@ -82,7 +82,7 @@ $ ./repog reconfig embedding
 # Chunk size changes: 22,113 → 86,400 chars
 # Warning shown, data cleared
 
-$ ./repog sync --owned --starred
+$ ./repog sync
 # Re-syncs with MUCH larger chunks (more efficient!)
 
 $ ./repog embed

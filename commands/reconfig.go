@@ -35,6 +35,7 @@ var (
 	reconfigProvider   string
 	reconfigModel      string
 	reconfigDimensions int
+	reconfigMaxTokens  int
 	reconfigBaseURL    string
 	reconfigFallback   string
 	reconfigAPIKey     string
@@ -44,6 +45,7 @@ func init() {
 	reconfigCmd.Flags().StringVar(&reconfigProvider, "provider", "", "Provider name (gemini, openai, openrouter, voyageai, anthropic, or ollama)")
 	reconfigCmd.Flags().StringVar(&reconfigModel, "model", "", "Model name")
 	reconfigCmd.Flags().IntVar(&reconfigDimensions, "dimensions", 0, "Embedding dimensions (embedding only)")
+	reconfigCmd.Flags().IntVar(&reconfigMaxTokens, "max-tokens", 0, "Max token limit per chunk (embedding only, 0 = use model default)")
 	reconfigCmd.Flags().StringVar(&reconfigBaseURL, "base-url", "", "Custom base URL (ollama only)")
 	reconfigCmd.Flags().StringVar(&reconfigFallback, "fallback", "", "Fallback model (generation only)")
 	reconfigCmd.Flags().StringVar(&reconfigAPIKey, "api-key", "", "API key for the provider")
@@ -94,53 +96,61 @@ func runReconfig(cmd *cobra.Command, args []string) error {
 
 	// Reconfigure embedding
 	if reconfigureEmbedding {
-		newEmbedCfg, newEmbedAPIKey := reconfigureEmbeddingProvider(cfg.Embedding, reconfigProvider, reconfigModel, reconfigDimensions, reconfigBaseURL, reconfigAPIKey, red, dim, green, yellow)
+		newEmbedCfg, newEmbedAPIKey := reconfigureEmbeddingProvider(cfg.Embedding, reconfigProvider, reconfigModel, reconfigDimensions, reconfigMaxTokens, reconfigBaseURL, reconfigAPIKey, red, dim, green, yellow)
 
-		// Check if embedding config changed
+		// Calculate chunk sizes to detect if they changed
+		var oldChunkSize, newChunkSize int
+
+		// Get old provider's token limit (uses config MaxTokens override if set)
+		oldAPIKey, _ := config.GetAPIKeyForProvider(originalEmbedding.Provider)
+		if oldProvider, err := provider.NewEmbeddingProvider(originalEmbedding, oldAPIKey); err == nil {
+			oldChunkSize = sync.CalculateMaxCharsFromTokens(oldProvider.MaxTokens())
+		}
+
+		// Get new provider's token limit (uses config MaxTokens override if set)
+		if newProvider, err := provider.NewEmbeddingProvider(newEmbedCfg, newEmbedAPIKey); err == nil {
+			newChunkSize = sync.CalculateMaxCharsFromTokens(newProvider.MaxTokens())
+		}
+
+		chunkSizeChanged := oldChunkSize != newChunkSize && oldChunkSize > 0 && newChunkSize > 0
+
+		// Check if embedding config changed (provider, model, or dimensions)
 		embeddingChanged := originalEmbedding.Provider != newEmbedCfg.Provider ||
 			originalEmbedding.Model != newEmbedCfg.Model ||
 			originalEmbedding.Dimensions != newEmbedCfg.Dimensions
 
-		// Calculate chunk sizes to detect if they changed
-		var oldChunkSize, newChunkSize int
-		var chunkSizeChanged bool
+		// Handle different change scenarios
+		if embeddingChanged || chunkSizeChanged {
+			fmt.Println()
 
-		if embeddingChanged {
-			// Get old provider's token limit
-			oldAPIKey, _ := config.GetAPIKeyForProvider(originalEmbedding.Provider)
-			if oldProvider, err := provider.NewEmbeddingProvider(originalEmbedding, oldAPIKey); err == nil {
-				oldChunkSize = sync.CalculateMaxCharsFromTokens(oldProvider.MaxTokens())
+			if embeddingChanged {
+				fmt.Println(yellow("⚠️  Warning: Embedding configuration has changed"))
+				fmt.Println()
+				fmt.Println("  Previous:", fmt.Sprintf("%s (%s, %dd)", originalEmbedding.Provider, originalEmbedding.Model, originalEmbedding.Dimensions))
+				fmt.Println("  New:     ", fmt.Sprintf("%s (%s, %dd)", newEmbedCfg.Provider, newEmbedCfg.Model, newEmbedCfg.Dimensions))
+				fmt.Println()
 			}
-
-			// Get new provider's token limit
-			if newProvider, err := provider.NewEmbeddingProvider(newEmbedCfg, newEmbedAPIKey); err == nil {
-				newChunkSize = sync.CalculateMaxCharsFromTokens(newProvider.MaxTokens())
-			}
-
-			chunkSizeChanged = oldChunkSize != newChunkSize && oldChunkSize > 0 && newChunkSize > 0
-		}
-
-		if embeddingChanged {
-			// Warn about clearing embeddings and potentially chunks
-			fmt.Println()
-			fmt.Println(yellow("⚠️  Warning: Embedding configuration has changed"))
-			fmt.Println()
-			fmt.Println("  Previous:", fmt.Sprintf("%s (%s, %dd)", originalEmbedding.Provider, originalEmbedding.Model, originalEmbedding.Dimensions))
-			fmt.Println("  New:     ", fmt.Sprintf("%s (%s, %dd)", newEmbedCfg.Provider, newEmbedCfg.Model, newEmbedCfg.Dimensions))
-			fmt.Println()
 
 			if chunkSizeChanged {
 				fmt.Println(yellow("  ⚠️  Chunk size will change:"))
-				fmt.Println(fmt.Sprintf("     Previous: %d characters", oldChunkSize))
-				fmt.Println(fmt.Sprintf("     New:      %d characters", newChunkSize))
+				fmt.Println(fmt.Sprintf("     Previous: %d characters (from %d tokens)", oldChunkSize, originalEmbedding.MaxTokens))
+				fmt.Println(fmt.Sprintf("     New:      %d characters (from %d tokens)", newChunkSize, newEmbedCfg.MaxTokens))
 				fmt.Println()
+			}
+
+			if embeddingChanged && chunkSizeChanged {
 				fmt.Println(yellow("  This will delete ALL existing embeddings AND chunks."))
 				fmt.Println(dim("  You'll need to run:"))
-				fmt.Println(dim("    1. repog sync --owned --starred  (to re-chunk with new size)"))
+				fmt.Println(dim("    1. repog sync  (to re-chunk with new size)"))
 				fmt.Println(dim("    2. repog embed                   (to generate new embeddings)"))
-			} else {
+			} else if embeddingChanged {
 				fmt.Println(yellow("  This will delete ALL existing embeddings."))
 				fmt.Println(dim("  You'll need to run `repog embed` to regenerate them."))
+			} else if chunkSizeChanged {
+				fmt.Println(yellow("  This will delete ALL existing chunks (max token limit changed)."))
+				fmt.Println(dim("  You'll need to run:"))
+				fmt.Println(dim("    1. repog sync  (to re-chunk with new size)"))
+				fmt.Println(dim("    2. repog embed                   (to generate new embeddings)"))
 			}
 			fmt.Println()
 
@@ -163,19 +173,21 @@ func runReconfig(cmd *cobra.Command, args []string) error {
 
 			s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
 
-			// Clear embeddings
-			s.Suffix = " Clearing embeddings..."
-			s.Start()
+			// Clear embeddings if embedding config changed
+			if embeddingChanged {
+				s.Suffix = " Clearing embeddings..."
+				s.Start()
 
-			if err := clearEmbeddings(database, newEmbedCfg.Dimensions); err != nil {
+				if err := clearEmbeddings(database, newEmbedCfg.Dimensions); err != nil {
+					s.Stop()
+					fmt.Fprintln(os.Stderr, red("Failed to clear embeddings:", err))
+					_ = database.Close()
+					os.Exit(1)
+				}
+
 				s.Stop()
-				fmt.Fprintln(os.Stderr, red("Failed to clear embeddings:", err))
-				_ = database.Close()
-				os.Exit(1)
+				fmt.Println(green("✓"), "Embeddings cleared")
 			}
-
-			s.Stop()
-			fmt.Println(green("✓"), "Embeddings cleared")
 
 			// Clear chunks if chunk size changed
 			if chunkSizeChanged {
@@ -239,7 +251,20 @@ func runReconfig(cmd *cobra.Command, args []string) error {
 	fmt.Println(bold(green("Reconfiguration complete!")))
 	fmt.Println()
 	if reconfigureEmbedding {
-		fmt.Println("Embedding:", cfg.Embedding.Provider, fmt.Sprintf("(%s, %dd)", cfg.Embedding.Model, cfg.Embedding.Dimensions))
+		// Get effective max tokens for display
+		var maxTokensLabel string
+		if cfg.Embedding.MaxTokens > 0 {
+			maxTokensLabel = fmt.Sprintf("%d tokens (custom)", cfg.Embedding.MaxTokens)
+		} else {
+			// Get model default
+			apiKey, _ := config.GetAPIKeyForProvider(cfg.Embedding.Provider)
+			if defaultMaxTokens, err := provider.GetModelDefaultMaxTokens(cfg.Embedding, apiKey); err == nil {
+				maxTokensLabel = fmt.Sprintf("%d tokens", defaultMaxTokens)
+			} else {
+				maxTokensLabel = "default"
+			}
+		}
+		fmt.Println("Embedding:", cfg.Embedding.Provider, fmt.Sprintf("(%s, %dd, %s)", cfg.Embedding.Model, cfg.Embedding.Dimensions, maxTokensLabel))
 	}
 	if reconfigureGeneration {
 		fmt.Println("Generation:", cfg.Generation.Provider, fmt.Sprintf("(%s)", cfg.Generation.Model))
@@ -250,11 +275,12 @@ func runReconfig(cmd *cobra.Command, args []string) error {
 }
 
 // reconfigureEmbeddingProvider handles embedding provider reconfiguration
-func reconfigureEmbeddingProvider(current config.ProviderConfig, providerFlag, modelFlag string, dimensionsFlag int, baseURLFlag, apiKeyFlag string, red, dim, green, yellow func(...interface{}) string) (config.ProviderConfig, string) {
+func reconfigureEmbeddingProvider(current config.ProviderConfig, providerFlag, modelFlag string, dimensionsFlag, maxTokensFlag int, baseURLFlag, apiKeyFlag string, red, dim, green, yellow func(...interface{}) string) (config.ProviderConfig, string) {
 	var selectedProvider string
 	var apiKey string
 	var model string
 	var dimensions int
+	var maxTokens int
 	var baseURL string
 
 	// Select provider (prefill with current)
@@ -410,11 +436,86 @@ func reconfigureEmbeddingProvider(current config.ProviderConfig, providerFlag, m
 		}
 	}
 
+	// Get max tokens - now that we have the API key, we can get model defaults
+	tempCfg := config.ProviderConfig{
+		Provider:   selectedProvider,
+		Model:      model,
+		Dimensions: dimensions,
+		BaseURL:    baseURL,
+	}
+
+	// Get model's default max tokens
+	var defaultMaxTokens int
+	if modelDefault, err := provider.GetModelDefaultMaxTokens(tempCfg, apiKey); err == nil {
+		defaultMaxTokens = modelDefault
+	} else {
+		// Fallback defaults if we can't determine
+		defaultMaxTokens = 2048
+	}
+
+	// Determine the current max tokens setting
+	var currentMaxTokens int
+	if current.MaxTokens > 0 {
+		currentMaxTokens = current.MaxTokens
+	} else {
+		currentMaxTokens = defaultMaxTokens
+	}
+
+	if maxTokensFlag != 0 {
+		maxTokens = maxTokensFlag
+	} else {
+		fmt.Println()
+		var customizeTokens bool
+		tokenPrompt := &survey.Confirm{
+			Message: fmt.Sprintf("Customize max token limit? (current: %d, model default: %d)", currentMaxTokens, defaultMaxTokens),
+			Default: false,
+		}
+		if err := survey.AskOne(tokenPrompt, &customizeTokens); err != nil {
+			// User cancelled, keep current
+			customizeTokens = false
+		}
+
+		if customizeTokens {
+			fmt.Println()
+			fmt.Println(dim("Max token limit controls how text is chunked for embedding."))
+			fmt.Println()
+			fmt.Println(yellow("⚠️  Warning:"))
+			fmt.Println(yellow("   • Too high: May cause embedding API errors if chunks exceed model limits"))
+			fmt.Println(yellow("   • Too low:  May reduce search accuracy due to excessive chunking"))
+			fmt.Println()
+
+			var maxTokensStr string
+			inputPrompt := &survey.Input{
+				Message: "Max tokens per chunk:",
+				Default: fmt.Sprintf("%d", currentMaxTokens),
+			}
+			if err := survey.AskOne(inputPrompt, &maxTokensStr); err != nil {
+				fmt.Println(red("✗"), "Failed to read input:", err)
+				os.Exit(1)
+			}
+
+			fmt.Sscanf(maxTokensStr, "%d", &maxTokens)
+
+			// Show additional warning if significantly different from default
+			if maxTokens > defaultMaxTokens*2 {
+				fmt.Println()
+				fmt.Println(yellow("⚠️  Token limit is much higher than model default - embedding errors may occur"))
+			} else if maxTokens < defaultMaxTokens/4 && maxTokens > 0 {
+				fmt.Println()
+				fmt.Println(yellow("⚠️  Token limit is much lower than model default - search accuracy may be reduced"))
+			}
+		} else {
+			// Keep the current setting
+			maxTokens = current.MaxTokens
+		}
+	}
+
 	// Build config
 	cfg := config.ProviderConfig{
 		Provider:   selectedProvider,
 		Model:      model,
 		Dimensions: dimensions,
+		MaxTokens:  maxTokens,
 		BaseURL:    baseURL,
 	}
 

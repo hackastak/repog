@@ -38,6 +38,7 @@ type ProviderConfig struct {
 	Provider   string `yaml:"provider"`              // gemini, ollama, openrouter
 	Model      string `yaml:"model"`                 // model name
 	Dimensions int    `yaml:"dimensions,omitempty"`  // embedding dimensions (embedding only)
+	MaxTokens  int    `yaml:"max_tokens,omitempty"`  // custom max token limit (embedding only, 0 = use model default)
 	BaseURL    string `yaml:"base_url,omitempty"`    // custom base URL (ollama/openrouter)
 	Fallback   string `yaml:"fallback,omitempty"`    // fallback model (LLM only)
 }

@@ -143,7 +143,7 @@ func selectEmbeddingProvider(providerFlag, apiKeyFlag string, red, dim, green fu
 		os.Exit(1)
 	}
 
-	// Validate provider
+	// Validate provider first to ensure credentials work
 	fmt.Println()
 	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
 	s.Suffix = fmt.Sprintf(" Validating %s embedding...", selectedProvider)
@@ -164,6 +164,58 @@ func selectEmbeddingProvider(providerFlag, apiKeyFlag string, red, dim, green fu
 
 	s.Stop()
 	fmt.Println(green("✓"), fmt.Sprintf("%s embedding validated", selectedProvider))
+
+	// Get default max tokens for the selected model
+	defaultMaxTokens := embedProvider.MaxTokens()
+
+	// Ask about custom max tokens
+	fmt.Println()
+	var customizeTokens bool
+	tokenPrompt := &survey.Confirm{
+		Message: fmt.Sprintf("Customize max token limit? (default: %d)", defaultMaxTokens),
+		Default: false,
+	}
+	if err := survey.AskOne(tokenPrompt, &customizeTokens); err != nil {
+		// User cancelled, use default
+		customizeTokens = false
+	}
+
+	if customizeTokens {
+		fmt.Println()
+		fmt.Println(dim("Max token limit controls how text is chunked for embedding."))
+		fmt.Println()
+		yellow := color.New(color.FgYellow).SprintFunc()
+		fmt.Println(yellow("⚠️  Warning:"))
+		fmt.Println(yellow("   • Too high: May cause embedding API errors if chunks exceed model limits"))
+		fmt.Println(yellow("   • Too low:  May reduce search accuracy due to excessive chunking"))
+		fmt.Println()
+
+		var maxTokensStr string
+		inputPrompt := &survey.Input{
+			Message: "Max tokens per chunk:",
+			Default: fmt.Sprintf("%d", defaultMaxTokens),
+		}
+		if err := survey.AskOne(inputPrompt, &maxTokensStr); err != nil {
+			fmt.Println(red("✗"), "Failed to read input:", err)
+			os.Exit(1)
+		}
+
+		var customMaxTokens int
+		fmt.Sscanf(maxTokensStr, "%d", &customMaxTokens)
+
+		if customMaxTokens > 0 && customMaxTokens != defaultMaxTokens {
+			cfg.MaxTokens = customMaxTokens
+
+			// Show additional warning if significantly different
+			if customMaxTokens > defaultMaxTokens*2 {
+				fmt.Println()
+				fmt.Println(yellow("⚠️  Token limit is much higher than model default - embedding errors may occur"))
+			} else if customMaxTokens < defaultMaxTokens/4 {
+				fmt.Println()
+				fmt.Println(yellow("⚠️  Token limit is much lower than model default - search accuracy may be reduced"))
+			}
+		}
+	}
 
 	return cfg, apiKey
 }
@@ -466,9 +518,23 @@ func runInit(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 	fmt.Println(bold(green("Setup complete!")))
 	fmt.Println()
+
+	// Get effective max tokens for display
+	var maxTokensLabel string
+	if embedCfg.MaxTokens > 0 {
+		maxTokensLabel = fmt.Sprintf("%d tokens (custom)", embedCfg.MaxTokens)
+	} else {
+		// Get model default
+		if defaultMaxTokens, err := provider.GetModelDefaultMaxTokens(embedCfg, embedAPIKey); err == nil {
+			maxTokensLabel = fmt.Sprintf("%d tokens", defaultMaxTokens)
+		} else {
+			maxTokensLabel = "default"
+		}
+	}
+
 	fmt.Println("Configuration:")
 	fmt.Println("  GitHub:", cyan(maskSecret(githubToken)), "("+patResult.Login+")")
-	fmt.Println("  Embedding:", cyan(embedCfg.Provider), fmt.Sprintf("(%s, %dd)", embedCfg.Model, embedCfg.Dimensions))
+	fmt.Println("  Embedding:", cyan(embedCfg.Provider), fmt.Sprintf("(%s, %dd, %s)", embedCfg.Model, embedCfg.Dimensions, maxTokensLabel))
 	fmt.Println("  Generation:", cyan(genCfg.Provider), fmt.Sprintf("(%s)", genCfg.Model))
 	fmt.Println("  Database:", cyan(dbPath))
 	fmt.Println()

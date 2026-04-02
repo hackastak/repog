@@ -3,17 +3,13 @@ package recommend
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"math"
-	"net/http"
-	"net/http/httptest"
 	"path/filepath"
 	"strings"
-	"sync/atomic"
 	"testing"
 
 	"github.com/hackastak/repog/internal/db"
-	"github.com/hackastak/repog/internal/gemini"
+	"github.com/hackastak/repog/internal/provider"
 	"github.com/hackastak/repog/internal/search"
 )
 
@@ -154,9 +150,8 @@ func TestParseRecommendationsAutoRank(t *testing.T) {
 
 func TestRecommendOptionsDefaults(t *testing.T) {
 	opts := RecommendOptions{
-		Query:  "test query",
-		Limit:  0,
-		APIKey: "test-key",
+		Query: "test query",
+		Limit: 0,
 	}
 
 	// When limit is 0 or negative, it should default to 3
@@ -247,8 +242,6 @@ func TestBuildRecommendPrompt(t *testing.T) {
 	}
 }
 
-// The following tests require database and HTTP server setup
-
 // makeTestEmbedding creates a 768-dimension embedding with a seed value
 func makeTestEmbedding(seed float32) []float32 {
 	e := make([]float32, 768)
@@ -259,7 +252,7 @@ func makeTestEmbedding(seed float32) []float32 {
 }
 
 // insertTestRepoWithEmbedding inserts a test repo with a chunk and embedding
-func insertTestRepoWithEmbedding(t *testing.T, database *sql.DB, githubID int64, fullName, owner, name, lang string, stars int, isOwned, isStarred bool, embeddingSeed float32) int64 {
+func insertTestRepoWithEmbedding(t *testing.T, database *sql.DB, githubID int64, fullName, owner, name, lang string, stars int, isOwned, isStarred bool, embeddingSeed float32) int64 { //nolint:unparam
 	t.Helper()
 	isOwnedInt := 0
 	if isOwned {
@@ -294,7 +287,7 @@ func insertTestRepoWithEmbedding(t *testing.T, database *sql.DB, githubID int64,
 
 	// Insert embedding
 	embedding := makeTestEmbedding(embeddingSeed)
-	embeddingBlob := gemini.Float32SliceToBytes(embedding)
+	embeddingBlob := provider.Float32SliceToBytes(embedding)
 	_, err = database.Exec("INSERT INTO chunk_embeddings (chunk_id, embedding) VALUES (?, ?)", chunkID, embeddingBlob)
 	if err != nil {
 		t.Fatalf("Failed to insert embedding: %v", err)
@@ -305,7 +298,7 @@ func insertTestRepoWithEmbedding(t *testing.T, database *sql.DB, githubID int64,
 
 func TestRecommendRepos_ReturnsRankedRecommendations(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -318,86 +311,55 @@ func TestRecommendRepos_ReturnsRankedRecommendations(t *testing.T) {
 	insertTestRepoWithEmbedding(t, database, 4, "owner/repo4", "owner", "repo4", "Go", 40, true, false, 0.8)
 	insertTestRepoWithEmbedding(t, database, 5, "owner/repo5", "owner", "repo5", "Go", 20, true, false, 0.9)
 
-	// Set up combined server for both embed and LLM endpoints
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "embedContent") {
-			// Return embedding for query
-			resp := map[string]interface{}{
-				"embedding": map[string]interface{}{
-					"values": makeTestEmbedding(0.5),
-				},
-			}
-			_ = json.NewEncoder(w).Encode(resp)
-			return
-		}
+	// Create mock providers
+	mockEmbed := provider.NewMockEmbeddingProvider()
+	mockEmbed.QueryFunc = func(_ context.Context, _ string) []float32 {
+		return makeTestEmbedding(0.5)
+	}
 
-		if strings.Contains(r.URL.Path, "generateContent") {
-			// Return LLM response as JSON
+	mockLLM := &provider.MockLLMProvider{
+		NameVal: "mock",
+		CallFunc: func(_ context.Context, _ provider.LLMRequest) (*provider.LLMResult, *provider.LLMError) {
 			llmResponse := `[
 				{"rank": 1, "repoFullName": "owner/repo1", "htmlUrl": "https://github.com/owner/repo1", "reasoning": "Best fit"},
 				{"rank": 2, "repoFullName": "owner/repo2", "htmlUrl": "https://github.com/owner/repo2", "reasoning": "Good fit"}
 			]`
-			resp := map[string]interface{}{
-				"candidates": []map[string]interface{}{
-					{
-						"content": map[string]interface{}{
-							"parts": []map[string]interface{}{
-								{"text": llmResponse},
-							},
-						},
-					},
-				},
-				"usageMetadata": map[string]interface{}{
-					"promptTokenCount":     100,
-					"candidatesTokenCount": 50,
-				},
-			}
-			_ = json.NewEncoder(w).Encode(resp)
-			return
-		}
-	}))
-	defer server.Close()
-
-	gemini.SetBaseURL(server.URL)
-	defer gemini.ResetBaseURL()
+			return &provider.LLMResult{Text: llmResponse, InputTokens: 100, OutputTokens: 50}, nil
+		},
+	}
 
 	// Call RecommendRepos
 	result, err := RecommendRepos(context.Background(), RecommendOptions{
-		Query:  "test query",
-		Limit:  2,
-		DB:     database,
-		APIKey: "test-key",
+		Query:             "test query",
+		Limit:             2,
+		DB:                database,
+		EmbeddingProvider: mockEmbed,
+		LLMProvider:       mockLLM,
 	})
 	if err != nil {
 		t.Fatalf("RecommendRepos failed: %v", err)
 	}
 
-	// Assert: len(result.Recommendations) == 2
 	if len(result.Recommendations) != 2 {
 		t.Errorf("Expected 2 recommendations, got %d", len(result.Recommendations))
 	}
 
-	// Assert: result.Recommendations[0].Rank == 1
 	if len(result.Recommendations) > 0 && result.Recommendations[0].Rank != 1 {
 		t.Errorf("Expected first recommendation rank 1, got %d", result.Recommendations[0].Rank)
 	}
 
-	// Assert: result.Recommendations[0].RepoFullName == "owner/repo1"
 	if len(result.Recommendations) > 0 && result.Recommendations[0].RepoFullName != "owner/repo1" {
 		t.Errorf("Expected first recommendation to be owner/repo1, got %s", result.Recommendations[0].RepoFullName)
 	}
 
-	// Assert: result.Recommendations[0].Reasoning == "Best fit"
 	if len(result.Recommendations) > 0 && result.Recommendations[0].Reasoning != "Best fit" {
 		t.Errorf("Expected reasoning 'Best fit', got %s", result.Recommendations[0].Reasoning)
 	}
 
-	// Assert: result.CandidatesConsidered > 0
 	if result.CandidatesConsidered <= 0 {
 		t.Errorf("Expected CandidatesConsidered > 0, got %d", result.CandidatesConsidered)
 	}
 
-	// Assert: result.DurationMs >= 0
 	if result.DurationMs < 0 {
 		t.Errorf("Expected DurationMs >= 0, got %d", result.DurationMs)
 	}
@@ -405,7 +367,7 @@ func TestRecommendRepos_ReturnsRankedRecommendations(t *testing.T) {
 
 func TestRecommendRepos_ReturnsEmptyWhenNoCandidates(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -413,59 +375,45 @@ func TestRecommendRepos_ReturnsEmptyWhenNoCandidates(t *testing.T) {
 
 	// No repos inserted - empty database
 
-	var llmRequestCount int32
+	llmRequestCount := 0
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "embedContent") {
-			resp := map[string]interface{}{
-				"embedding": map[string]interface{}{
-					"values": makeTestEmbedding(0.5),
-				},
-			}
-			_ = json.NewEncoder(w).Encode(resp)
-			return
-		}
-		if strings.Contains(r.URL.Path, "generateContent") {
-			atomic.AddInt32(&llmRequestCount, 1)
-			// Return empty response for this test
-			resp := map[string]interface{}{
-				"candidates": []map[string]interface{}{},
-			}
-			_ = json.NewEncoder(w).Encode(resp)
-			return
-		}
-	}))
-	defer server.Close()
+	mockEmbed := provider.NewMockEmbeddingProvider()
+	mockEmbed.QueryFunc = func(_ context.Context, _ string) []float32 {
+		return makeTestEmbedding(0.5)
+	}
 
-	gemini.SetBaseURL(server.URL)
-	defer gemini.ResetBaseURL()
+	mockLLM := &provider.MockLLMProvider{
+		NameVal: "mock",
+		CallFunc: func(_ context.Context, _ provider.LLMRequest) (*provider.LLMResult, *provider.LLMError) {
+			llmRequestCount++
+			return &provider.LLMResult{Text: "[]", InputTokens: 10, OutputTokens: 5}, nil
+		},
+	}
 
 	result, err := RecommendRepos(context.Background(), RecommendOptions{
-		Query:  "test query",
-		Limit:  3,
-		DB:     database,
-		APIKey: "test-key",
+		Query:             "test query",
+		Limit:             3,
+		DB:                database,
+		EmbeddingProvider: mockEmbed,
+		LLMProvider:       mockLLM,
 	})
 
-	// Assert: does not return error
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
 
-	// Assert: result.Recommendations is empty
 	if len(result.Recommendations) != 0 {
 		t.Errorf("Expected empty recommendations, got %d", len(result.Recommendations))
 	}
 
-	// Assert: Gemini LLM server is NOT called (zero requests)
-	if atomic.LoadInt32(&llmRequestCount) != 0 {
+	if llmRequestCount != 0 {
 		t.Errorf("Expected 0 LLM requests when no candidates, got %d", llmRequestCount)
 	}
 }
 
 func TestRecommendRepos_ReturnsEmptyOnLLMFailure(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -474,49 +422,37 @@ func TestRecommendRepos_ReturnsEmptyOnLLMFailure(t *testing.T) {
 	// Insert repos with embeddings
 	insertTestRepoWithEmbedding(t, database, 1, "owner/repo1", "owner", "repo1", "Go", 100, true, false, 0.5)
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "embedContent") {
-			resp := map[string]interface{}{
-				"embedding": map[string]interface{}{
-					"values": makeTestEmbedding(0.5),
-				},
-			}
-			_ = json.NewEncoder(w).Encode(resp)
-			return
-		}
-		if strings.Contains(r.URL.Path, "generateContent") {
-			// LLM returns 500
-			w.WriteHeader(500)
-			_, _ = w.Write([]byte("Internal Server Error"))
-			return
-		}
-	}))
-	defer server.Close()
+	mockEmbed := provider.NewMockEmbeddingProvider()
+	mockEmbed.QueryFunc = func(_ context.Context, _ string) []float32 {
+		return makeTestEmbedding(0.5)
+	}
 
-	gemini.SetBaseURL(server.URL)
-	defer gemini.ResetBaseURL()
+	mockLLM := &provider.MockLLMProvider{
+		NameVal: "mock",
+		CallFunc: func(_ context.Context, _ provider.LLMRequest) (*provider.LLMResult, *provider.LLMError) {
+			return nil, &provider.LLMError{Message: "Internal Server Error", StatusCode: 500}
+		},
+	}
 
 	result, err := RecommendRepos(context.Background(), RecommendOptions{
-		Query:  "test query",
-		Limit:  2,
-		DB:     database,
-		APIKey: "test-key",
+		Query:             "test query",
+		Limit:             2,
+		DB:                database,
+		EmbeddingProvider: mockEmbed,
+		LLMProvider:       mockLLM,
 	})
 
 	// The function should return an error or empty recommendations
-	// Based on the implementation, it returns error on LLM failure
 	if err == nil {
-		// If no error, recommendations should be empty
 		if len(result.Recommendations) != 0 {
 			t.Errorf("Expected empty recommendations on LLM failure, got %d", len(result.Recommendations))
 		}
 	}
-	// Assert: does not panic (test passes if we reach here)
 }
 
 func TestRecommendRepos_StripsMarkdownFencesFromLLMResponse(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -524,54 +460,31 @@ func TestRecommendRepos_StripsMarkdownFencesFromLLMResponse(t *testing.T) {
 
 	insertTestRepoWithEmbedding(t, database, 1, "owner/repo", "owner", "repo", "Go", 100, true, false, 0.5)
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "embedContent") {
-			resp := map[string]interface{}{
-				"embedding": map[string]interface{}{
-					"values": makeTestEmbedding(0.5),
-				},
-			}
-			_ = json.NewEncoder(w).Encode(resp)
-			return
-		}
-		if strings.Contains(r.URL.Path, "generateContent") {
+	mockEmbed := provider.NewMockEmbeddingProvider()
+	mockEmbed.QueryFunc = func(_ context.Context, _ string) []float32 {
+		return makeTestEmbedding(0.5)
+	}
+
+	mockLLM := &provider.MockLLMProvider{
+		NameVal: "mock",
+		CallFunc: func(_ context.Context, _ provider.LLMRequest) (*provider.LLMResult, *provider.LLMError) {
 			// LLM response wrapped in markdown fences
 			llmResponse := "```json\n[{\"rank\":1,\"repoFullName\":\"owner/repo\",\"htmlUrl\":\"https://github.com/owner/repo\",\"reasoning\":\"Good\"}]\n```"
-			resp := map[string]interface{}{
-				"candidates": []map[string]interface{}{
-					{
-						"content": map[string]interface{}{
-							"parts": []map[string]interface{}{
-								{"text": llmResponse},
-							},
-						},
-					},
-				},
-				"usageMetadata": map[string]interface{}{
-					"promptTokenCount":     100,
-					"candidatesTokenCount": 50,
-				},
-			}
-			_ = json.NewEncoder(w).Encode(resp)
-			return
-		}
-	}))
-	defer server.Close()
-
-	gemini.SetBaseURL(server.URL)
-	defer gemini.ResetBaseURL()
+			return &provider.LLMResult{Text: llmResponse, InputTokens: 100, OutputTokens: 50}, nil
+		},
+	}
 
 	result, err := RecommendRepos(context.Background(), RecommendOptions{
-		Query:  "test query",
-		Limit:  3,
-		DB:     database,
-		APIKey: "test-key",
+		Query:             "test query",
+		Limit:             3,
+		DB:                database,
+		EmbeddingProvider: mockEmbed,
+		LLMProvider:       mockLLM,
 	})
 	if err != nil {
 		t.Fatalf("RecommendRepos failed: %v", err)
 	}
 
-	// Assert: result.Recommendations has 1 entry (fences stripped and parsed correctly)
 	if len(result.Recommendations) != 1 {
 		t.Errorf("Expected 1 recommendation after stripping fences, got %d", len(result.Recommendations))
 	}
@@ -579,7 +492,7 @@ func TestRecommendRepos_StripsMarkdownFencesFromLLMResponse(t *testing.T) {
 
 func TestRecommendRepos_CapsAtLimit(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -589,17 +502,14 @@ func TestRecommendRepos_CapsAtLimit(t *testing.T) {
 	insertTestRepoWithEmbedding(t, database, 2, "owner/repo2", "owner", "repo2", "Go", 80, true, false, 0.6)
 	insertTestRepoWithEmbedding(t, database, 3, "owner/repo3", "owner", "repo3", "Go", 60, true, false, 0.7)
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "embedContent") {
-			resp := map[string]interface{}{
-				"embedding": map[string]interface{}{
-					"values": makeTestEmbedding(0.5),
-				},
-			}
-			_ = json.NewEncoder(w).Encode(resp)
-			return
-		}
-		if strings.Contains(r.URL.Path, "generateContent") {
+	mockEmbed := provider.NewMockEmbeddingProvider()
+	mockEmbed.QueryFunc = func(_ context.Context, _ string) []float32 {
+		return makeTestEmbedding(0.5)
+	}
+
+	mockLLM := &provider.MockLLMProvider{
+		NameVal: "mock",
+		CallFunc: func(_ context.Context, _ provider.LLMRequest) (*provider.LLMResult, *provider.LLMError) {
 			// LLM returns 5 recommendations
 			llmResponse := `[
 				{"rank": 1, "repoFullName": "owner/repo1", "htmlUrl": "https://github.com/owner/repo1", "reasoning": "R1"},
@@ -608,37 +518,21 @@ func TestRecommendRepos_CapsAtLimit(t *testing.T) {
 				{"rank": 4, "repoFullName": "owner/repo4", "htmlUrl": "https://github.com/owner/repo4", "reasoning": "R4"},
 				{"rank": 5, "repoFullName": "owner/repo5", "htmlUrl": "https://github.com/owner/repo5", "reasoning": "R5"}
 			]`
-			resp := map[string]interface{}{
-				"candidates": []map[string]interface{}{
-					{
-						"content": map[string]interface{}{
-							"parts": []map[string]interface{}{
-								{"text": llmResponse},
-							},
-						},
-					},
-				},
-			}
-			_ = json.NewEncoder(w).Encode(resp)
-			return
-		}
-	}))
-	defer server.Close()
-
-	gemini.SetBaseURL(server.URL)
-	defer gemini.ResetBaseURL()
+			return &provider.LLMResult{Text: llmResponse, InputTokens: 100, OutputTokens: 50}, nil
+		},
+	}
 
 	result, err := RecommendRepos(context.Background(), RecommendOptions{
-		Query:  "test query",
-		Limit:  2,
-		DB:     database,
-		APIKey: "test-key",
+		Query:             "test query",
+		Limit:             2,
+		DB:                database,
+		EmbeddingProvider: mockEmbed,
+		LLMProvider:       mockLLM,
 	})
 	if err != nil {
 		t.Fatalf("RecommendRepos failed: %v", err)
 	}
 
-	// Assert: len(result.Recommendations) == 2
 	if len(result.Recommendations) != 2 {
 		t.Errorf("Expected 2 recommendations (capped at limit), got %d", len(result.Recommendations))
 	}
@@ -646,7 +540,7 @@ func TestRecommendRepos_CapsAtLimit(t *testing.T) {
 
 func TestRecommendRepos_PassesFiltersToSearch(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -658,58 +552,27 @@ func TestRecommendRepos_PassesFiltersToSearch(t *testing.T) {
 
 	var capturedPrompt string
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "embedContent") {
-			resp := map[string]interface{}{
-				"embedding": map[string]interface{}{
-					"values": makeTestEmbedding(0.5),
-				},
-			}
-			_ = json.NewEncoder(w).Encode(resp)
-			return
-		}
-		if strings.Contains(r.URL.Path, "generateContent") {
-			// Capture the request body to verify filters
-			var reqBody struct {
-				Contents []struct {
-					Parts []struct {
-						Text string `json:"text"`
-					} `json:"parts"`
-				} `json:"contents"`
-			}
-			if err := json.NewDecoder(r.Body).Decode(&reqBody); err == nil {
-				if len(reqBody.Contents) > 0 && len(reqBody.Contents[0].Parts) > 0 {
-					capturedPrompt = reqBody.Contents[0].Parts[0].Text
-				}
-			}
+	mockEmbed := provider.NewMockEmbeddingProvider()
+	mockEmbed.QueryFunc = func(_ context.Context, _ string) []float32 {
+		return makeTestEmbedding(0.5)
+	}
 
+	mockLLM := &provider.MockLLMProvider{
+		NameVal: "mock",
+		CallFunc: func(_ context.Context, req provider.LLMRequest) (*provider.LLMResult, *provider.LLMError) {
+			capturedPrompt = req.Prompt
 			llmResponse := `[{"rank": 1, "repoFullName": "owner/go-repo", "htmlUrl": "https://github.com/owner/go-repo", "reasoning": "Go repo"}]`
-			resp := map[string]interface{}{
-				"candidates": []map[string]interface{}{
-					{
-						"content": map[string]interface{}{
-							"parts": []map[string]interface{}{
-								{"text": llmResponse},
-							},
-						},
-					},
-				},
-			}
-			_ = json.NewEncoder(w).Encode(resp)
-			return
-		}
-	}))
-	defer server.Close()
-
-	gemini.SetBaseURL(server.URL)
-	defer gemini.ResetBaseURL()
+			return &provider.LLMResult{Text: llmResponse, InputTokens: 100, OutputTokens: 50}, nil
+		},
+	}
 
 	goLang := "Go"
 	_, err = RecommendRepos(context.Background(), RecommendOptions{
-		Query:  "test query",
-		Limit:  3,
-		DB:     database,
-		APIKey: "test-key",
+		Query:             "test query",
+		Limit:             3,
+		DB:                database,
+		EmbeddingProvider: mockEmbed,
+		LLMProvider:       mockLLM,
 		Filters: search.SearchFilters{
 			Language: &goLang,
 		},
@@ -718,7 +581,7 @@ func TestRecommendRepos_PassesFiltersToSearch(t *testing.T) {
 		t.Fatalf("RecommendRepos failed: %v", err)
 	}
 
-	// Assert: LLM prompt only contains Go repos as candidates
+	// LLM prompt should only contain Go repos as candidates
 	if !strings.Contains(capturedPrompt, "go-repo") {
 		t.Errorf("Expected prompt to contain Go repo, prompt was: %s", capturedPrompt)
 	}

@@ -133,8 +133,8 @@ func runReconfig(cmd *cobra.Command, args []string) error {
 
 			if chunkSizeChanged {
 				fmt.Println(yellow("  ⚠️  Chunk size will change:"))
-				fmt.Println(fmt.Sprintf("     Previous: %d characters (from %d tokens)", oldChunkSize, originalEmbedding.MaxTokens))
-				fmt.Println(fmt.Sprintf("     New:      %d characters (from %d tokens)", newChunkSize, newEmbedCfg.MaxTokens))
+				fmt.Printf("     Previous: %d characters (from %d tokens)\n", oldChunkSize, originalEmbedding.MaxTokens)
+				fmt.Printf("     New:      %d characters (from %d tokens)\n", newChunkSize, newEmbedCfg.MaxTokens)
 				fmt.Println()
 			}
 
@@ -366,7 +366,7 @@ func reconfigureEmbeddingProvider(current config.ProviderConfig, providerFlag, m
 			fmt.Println(red("✗"), "Failed to read input:", err)
 			os.Exit(1)
 		}
-		fmt.Sscanf(dimStr, "%d", &dimensions)
+		_, _ = fmt.Sscanf(dimStr, "%d", &dimensions)
 	}
 
 	// Get base URL for Ollama
@@ -494,7 +494,7 @@ func reconfigureEmbeddingProvider(current config.ProviderConfig, providerFlag, m
 				os.Exit(1)
 			}
 
-			fmt.Sscanf(maxTokensStr, "%d", &maxTokens)
+			_, _ = fmt.Sscanf(maxTokensStr, "%d", &maxTokens)
 
 			// Show additional warning if significantly different from default
 			if maxTokens > defaultMaxTokens*2 {

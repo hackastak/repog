@@ -3,16 +3,11 @@ package ask
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
-	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/hackastak/repog/internal/db"
-	"github.com/hackastak/repog/internal/gemini"
+	"github.com/hackastak/repog/internal/provider"
 	"github.com/hackastak/repog/internal/search"
 )
 
@@ -100,7 +95,7 @@ func insertTestRepoWithEmbedding(t *testing.T, database *sql.DB, fullName string
 		t.Fatalf("Failed to get chunk ID: %v", err)
 	}
 
-	embeddingBlob := gemini.Float32SliceToBytes(embedding)
+	embeddingBlob := provider.Float32SliceToBytes(embedding)
 	_, err = database.Exec("INSERT INTO chunk_embeddings (chunk_id, embedding) VALUES (?, ?)", chunkID, embeddingBlob)
 	if err != nil {
 		t.Fatalf("Failed to insert embedding: %v", err)
@@ -110,35 +105,29 @@ func insertTestRepoWithEmbedding(t *testing.T, database *sql.DB, fullName string
 }
 
 func TestAskQuestion_ReturnsPopulatedResult(t *testing.T) {
-	// Create combined mock server that handles both embedding and LLM requests
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Check if this is an embedding request or LLM request based on URL path
-		if strings.Contains(r.URL.Path, "embedContent") {
-			// Return 768-dimension embedding for EmbedQuery
-			embedding := make([]float32, 768)
-			for i := range embedding {
-				embedding[i] = 0.5
-			}
-			resp := map[string]interface{}{
-				"embedding": map[string]interface{}{
-					"values": embedding,
-				},
-			}
-			_ = json.NewEncoder(w).Encode(resp)
-		} else {
-			// LLM streaming response
-			w.Header().Set("Content-Type", "text/event-stream")
-			payload := `{"candidates":[{"content":{"parts":[{"text":"This is the answer based on the context."}]}}],"usageMetadata":{"promptTokenCount":100,"candidatesTokenCount":50}}`
-			_, _ = fmt.Fprintf(w, "data: %s\n\n", payload)
+	// Create mock providers
+	mockEmbed := provider.NewMockEmbeddingProvider()
+	mockEmbed.QueryFunc = func(_ context.Context, _ string) []float32 {
+		embedding := make([]float32, 768)
+		for i := range embedding {
+			embedding[i] = 0.5
 		}
-	}))
-	defer server.Close()
+		return embedding
+	}
 
-	gemini.SetBaseURL(server.URL)
-	defer gemini.ResetBaseURL()
+	mockLLM := &provider.MockLLMProvider{
+		NameVal: "mock",
+		StreamFunc: func(_ context.Context, _ provider.LLMRequest, onChunk func(string)) (*provider.LLMResult, *provider.LLMError) {
+			text := "This is the answer based on the context."
+			if onChunk != nil {
+				onChunk(text)
+			}
+			return &provider.LLMResult{Text: text, InputTokens: 100, OutputTokens: 50}, nil
+		},
+	}
 
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -157,10 +146,11 @@ func TestAskQuestion_ReturnsPopulatedResult(t *testing.T) {
 	}
 
 	result, err := AskQuestion(context.Background(), AskOptions{
-		Question: "What is this repo about?",
-		DB:       database,
-		APIKey:   "test-key",
-		Limit:    10,
+		Question:          "What is this repo about?",
+		DB:                database,
+		EmbeddingProvider: mockEmbed,
+		LLMProvider:       mockLLM,
+		Limit:             10,
 	}, onChunk)
 
 	if err != nil {
@@ -189,31 +179,28 @@ func TestAskQuestion_ReturnsPopulatedResult(t *testing.T) {
 }
 
 func TestAskQuestion_RepoFilterScopesResults(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "embedContent") {
-			embedding := make([]float32, 768)
-			for i := range embedding {
-				embedding[i] = 0.5
-			}
-			resp := map[string]interface{}{
-				"embedding": map[string]interface{}{
-					"values": embedding,
-				},
-			}
-			_ = json.NewEncoder(w).Encode(resp)
-		} else {
-			w.Header().Set("Content-Type", "text/event-stream")
-			payload := `{"candidates":[{"content":{"parts":[{"text":"Filtered answer"}]}}],"usageMetadata":{}}`
-			_, _ = fmt.Fprintf(w, "data: %s\n\n", payload)
+	mockEmbed := provider.NewMockEmbeddingProvider()
+	mockEmbed.QueryFunc = func(_ context.Context, _ string) []float32 {
+		embedding := make([]float32, 768)
+		for i := range embedding {
+			embedding[i] = 0.5
 		}
-	}))
-	defer server.Close()
+		return embedding
+	}
 
-	gemini.SetBaseURL(server.URL)
-	defer gemini.ResetBaseURL()
+	mockLLM := &provider.MockLLMProvider{
+		NameVal: "mock",
+		StreamFunc: func(_ context.Context, _ provider.LLMRequest, onChunk func(string)) (*provider.LLMResult, *provider.LLMError) {
+			text := "Filtered answer"
+			if onChunk != nil {
+				onChunk(text)
+			}
+			return &provider.LLMResult{Text: text, InputTokens: 10, OutputTokens: 5}, nil
+		},
+	}
 
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -233,7 +220,7 @@ func TestAskQuestion_RepoFilterScopesResults(t *testing.T) {
 	repo1ID, _ := result1.LastInsertId()
 	chunk1Result, _ := database.Exec(`INSERT INTO chunks (repo_id, chunk_type, content) VALUES (?, 'readme', 'Repo1 content')`, repo1ID)
 	chunk1ID, _ := chunk1Result.LastInsertId()
-	_, _ = database.Exec("INSERT INTO chunk_embeddings (chunk_id, embedding) VALUES (?, ?)", chunk1ID, gemini.Float32SliceToBytes(embedding))
+	_, _ = database.Exec("INSERT INTO chunk_embeddings (chunk_id, embedding) VALUES (?, ?)", chunk1ID, provider.Float32SliceToBytes(embedding))
 
 	result2, _ := database.Exec(`
 		INSERT INTO repos (github_id, full_name, owner, name, description, stars, language, topics, html_url, synced_at)
@@ -242,15 +229,16 @@ func TestAskQuestion_RepoFilterScopesResults(t *testing.T) {
 	repo2ID, _ := result2.LastInsertId()
 	chunk2Result, _ := database.Exec(`INSERT INTO chunks (repo_id, chunk_type, content) VALUES (?, 'readme', 'Repo2 content')`, repo2ID)
 	chunk2ID, _ := chunk2Result.LastInsertId()
-	_, _ = database.Exec("INSERT INTO chunk_embeddings (chunk_id, embedding) VALUES (?, ?)", chunk2ID, gemini.Float32SliceToBytes(embedding))
+	_, _ = database.Exec("INSERT INTO chunk_embeddings (chunk_id, embedding) VALUES (?, ?)", chunk2ID, provider.Float32SliceToBytes(embedding))
 
 	// Filter to only user/repo1
 	askResult, err := AskQuestion(context.Background(), AskOptions{
-		Question: "What is this repo about?",
-		Repo:     "user/repo1",
-		DB:       database,
-		APIKey:   "test-key",
-		Limit:    10,
+		Question:          "What is this repo about?",
+		Repo:              "user/repo1",
+		DB:                database,
+		EmbeddingProvider: mockEmbed,
+		LLMProvider:       mockLLM,
+		Limit:             10,
 	}, nil)
 
 	if err != nil {
@@ -266,23 +254,17 @@ func TestAskQuestion_RepoFilterScopesResults(t *testing.T) {
 }
 
 func TestAskQuestion_ReturnsNoInfoMessageWhenNoResults(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Return embedding for query
-		embedding := make([]float64, 768)
-		resp := map[string]interface{}{
-			"embedding": map[string]interface{}{
-				"values": embedding,
-			},
-		}
-		_ = json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
+	mockEmbed := provider.NewMockEmbeddingProvider()
+	mockEmbed.QueryFunc = func(_ context.Context, _ string) []float32 {
+		embedding := make([]float32, 768)
+		return embedding
+	}
 
-	gemini.SetBaseURL(server.URL)
-	defer gemini.ResetBaseURL()
+	// LLM should not be called when no results
+	mockLLM := provider.NewMockLLMProvider()
 
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -296,9 +278,10 @@ func TestAskQuestion_ReturnsNoInfoMessageWhenNoResults(t *testing.T) {
 	}
 
 	result, err := AskQuestion(context.Background(), AskOptions{
-		Question: "What is this repo about?",
-		DB:       database,
-		APIKey:   "test-key",
+		Question:          "What is this repo about?",
+		DB:                database,
+		EmbeddingProvider: mockEmbed,
+		LLMProvider:       mockLLM,
 	}, onChunk)
 
 	if err != nil {
@@ -316,32 +299,24 @@ func TestAskQuestion_ReturnsNoInfoMessageWhenNoResults(t *testing.T) {
 }
 
 func TestAskQuestion_HandlesLLMError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "embedContent") {
-			// Return embedding for query
-			embedding := make([]float32, 768)
-			for i := range embedding {
-				embedding[i] = 0.5
-			}
-			resp := map[string]interface{}{
-				"embedding": map[string]interface{}{
-					"values": embedding,
-				},
-			}
-			_ = json.NewEncoder(w).Encode(resp)
-		} else {
-			// LLM error
-			w.WriteHeader(http.StatusInternalServerError)
-			_, _ = w.Write([]byte("Internal Server Error"))
+	mockEmbed := provider.NewMockEmbeddingProvider()
+	mockEmbed.QueryFunc = func(_ context.Context, _ string) []float32 {
+		embedding := make([]float32, 768)
+		for i := range embedding {
+			embedding[i] = 0.5
 		}
-	}))
-	defer server.Close()
+		return embedding
+	}
 
-	gemini.SetBaseURL(server.URL)
-	defer gemini.ResetBaseURL()
+	mockLLM := &provider.MockLLMProvider{
+		NameVal: "mock",
+		StreamFunc: func(_ context.Context, _ provider.LLMRequest, _ func(string)) (*provider.LLMResult, *provider.LLMError) {
+			return nil, &provider.LLMError{Message: "Internal Server Error", StatusCode: 500}
+		},
+	}
 
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -354,9 +329,10 @@ func TestAskQuestion_HandlesLLMError(t *testing.T) {
 	insertTestRepoWithEmbedding(t, database, "user/repo", "Content", embedding)
 
 	result, err := AskQuestion(context.Background(), AskOptions{
-		Question: "What is this repo about?",
-		DB:       database,
-		APIKey:   "test-key",
+		Question:          "What is this repo about?",
+		DB:                database,
+		EmbeddingProvider: mockEmbed,
+		LLMProvider:       mockLLM,
 	}, nil)
 
 	// Should not return Go error, but Answer should contain error message
@@ -370,24 +346,16 @@ func TestAskQuestion_HandlesLLMError(t *testing.T) {
 }
 
 func TestAskQuestion_DefaultLimit(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "embedContent") {
-			embedding := make([]float32, 768)
-			resp := map[string]interface{}{
-				"embedding": map[string]interface{}{
-					"values": embedding,
-				},
-			}
-			_ = json.NewEncoder(w).Encode(resp)
-		}
-	}))
-	defer server.Close()
+	mockEmbed := provider.NewMockEmbeddingProvider()
+	mockEmbed.QueryFunc = func(_ context.Context, _ string) []float32 {
+		embedding := make([]float32, 768)
+		return embedding
+	}
 
-	gemini.SetBaseURL(server.URL)
-	defer gemini.ResetBaseURL()
+	mockLLM := provider.NewMockLLMProvider()
 
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -395,10 +363,11 @@ func TestAskQuestion_DefaultLimit(t *testing.T) {
 
 	// Test with Limit = 0 (should default to 10)
 	result, err := AskQuestion(context.Background(), AskOptions{
-		Question: "What is this repo about?",
-		DB:       database,
-		APIKey:   "test-key",
-		Limit:    0, // Should default to 10
+		Question:          "What is this repo about?",
+		DB:                database,
+		EmbeddingProvider: mockEmbed,
+		LLMProvider:       mockLLM,
+		Limit:             0, // Should default to 10
 	}, nil)
 
 	if err != nil {
@@ -412,31 +381,27 @@ func TestAskQuestion_DefaultLimit(t *testing.T) {
 }
 
 func TestAskQuestion_NilOnChunkCallback(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "embedContent") {
-			embedding := make([]float32, 768)
-			for i := range embedding {
-				embedding[i] = 0.5
-			}
-			resp := map[string]interface{}{
-				"embedding": map[string]interface{}{
-					"values": embedding,
-				},
-			}
-			_ = json.NewEncoder(w).Encode(resp)
-		} else {
-			w.Header().Set("Content-Type", "text/event-stream")
-			payload := `{"candidates":[{"content":{"parts":[{"text":"Answer"}]}}],"usageMetadata":{}}`
-			_, _ = fmt.Fprintf(w, "data: %s\n\n", payload)
+	mockEmbed := provider.NewMockEmbeddingProvider()
+	mockEmbed.QueryFunc = func(_ context.Context, _ string) []float32 {
+		embedding := make([]float32, 768)
+		for i := range embedding {
+			embedding[i] = 0.5
 		}
-	}))
-	defer server.Close()
+		return embedding
+	}
 
-	gemini.SetBaseURL(server.URL)
-	defer gemini.ResetBaseURL()
+	mockLLM := &provider.MockLLMProvider{
+		NameVal: "mock",
+		StreamFunc: func(_ context.Context, _ provider.LLMRequest, onChunk func(string)) (*provider.LLMResult, *provider.LLMError) {
+			if onChunk != nil {
+				onChunk("Answer")
+			}
+			return &provider.LLMResult{Text: "Answer", InputTokens: 10, OutputTokens: 5}, nil
+		},
+	}
 
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -450,9 +415,10 @@ func TestAskQuestion_NilOnChunkCallback(t *testing.T) {
 
 	// Should not panic with nil callback
 	result, err := AskQuestion(context.Background(), AskOptions{
-		Question: "What is this repo about?",
-		DB:       database,
-		APIKey:   "test-key",
+		Question:          "What is this repo about?",
+		DB:                database,
+		EmbeddingProvider: mockEmbed,
+		LLMProvider:       mockLLM,
 	}, nil)
 
 	if err != nil {
@@ -465,31 +431,28 @@ func TestAskQuestion_NilOnChunkCallback(t *testing.T) {
 }
 
 func TestAskQuestion_CaseInsensitiveRepoFilter(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "embedContent") {
-			embedding := make([]float32, 768)
-			for i := range embedding {
-				embedding[i] = 0.5
-			}
-			resp := map[string]interface{}{
-				"embedding": map[string]interface{}{
-					"values": embedding,
-				},
-			}
-			_ = json.NewEncoder(w).Encode(resp)
-		} else {
-			w.Header().Set("Content-Type", "text/event-stream")
-			payload := `{"candidates":[{"content":{"parts":[{"text":"Filtered answer"}]}}],"usageMetadata":{}}`
-			_, _ = fmt.Fprintf(w, "data: %s\n\n", payload)
+	mockEmbed := provider.NewMockEmbeddingProvider()
+	mockEmbed.QueryFunc = func(_ context.Context, _ string) []float32 {
+		embedding := make([]float32, 768)
+		for i := range embedding {
+			embedding[i] = 0.5
 		}
-	}))
-	defer server.Close()
+		return embedding
+	}
 
-	gemini.SetBaseURL(server.URL)
-	defer gemini.ResetBaseURL()
+	mockLLM := &provider.MockLLMProvider{
+		NameVal: "mock",
+		StreamFunc: func(_ context.Context, _ provider.LLMRequest, onChunk func(string)) (*provider.LLMResult, *provider.LLMError) {
+			text := "Filtered answer"
+			if onChunk != nil {
+				onChunk(text)
+			}
+			return &provider.LLMResult{Text: text, InputTokens: 10, OutputTokens: 5}, nil
+		},
+	}
 
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -503,10 +466,11 @@ func TestAskQuestion_CaseInsensitiveRepoFilter(t *testing.T) {
 
 	// Filter with different case - should still match
 	result, err := AskQuestion(context.Background(), AskOptions{
-		Question: "What is this repo about?",
-		Repo:     "user/myrepo", // lowercase
-		DB:       database,
-		APIKey:   "test-key",
+		Question:          "What is this repo about?",
+		Repo:              "user/myrepo", // lowercase
+		DB:                database,
+		EmbeddingProvider: mockEmbed,
+		LLMProvider:       mockLLM,
 	}, nil)
 
 	if err != nil {

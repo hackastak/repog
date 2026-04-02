@@ -88,8 +88,8 @@ func (o *OllamaLLMProvider) Call(ctx context.Context, req provider.LLMRequest) (
 		Model:    o.model,
 		Messages: messages,
 		Options: map[string]interface{}{
-			"temperature":      req.Temperature,
-			"num_predict":      req.MaxTokens,
+			"temperature": req.Temperature,
+			"num_predict": req.MaxTokens,
 		},
 		Stream: false,
 	}

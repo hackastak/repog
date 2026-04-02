@@ -45,7 +45,7 @@ information to answer the question, say so clearly. Be concise and precise.`
 
 // buildAskPrompt builds the user prompt for Q&A.
 func buildAskPrompt(question string, chunks []search.SearchResult) string {
-	var formattedChunks []string
+	formattedChunks := make([]string, 0, len(chunks))
 	for _, chunk := range chunks {
 		formattedChunks = append(formattedChunks, fmt.Sprintf("--- %s (%s) ---\n%s", chunk.RepoFullName, chunk.ChunkType, chunk.Content))
 	}

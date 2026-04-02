@@ -46,7 +46,7 @@ const systemPrompt = `You are a developer tool assistant. Your job is to recomme
 
 // buildRecommendPrompt builds the user prompt for recommendations.
 func buildRecommendPrompt(query string, candidates []search.SearchResult, limit int) string {
-	var candidateLines []string
+	candidateLines := make([]string, 0, len(candidates))
 	for _, c := range candidates {
 		description := c.Description
 		if description == "" {

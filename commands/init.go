@@ -31,13 +31,13 @@ var initCmd = &cobra.Command{
 }
 
 var (
-	initGitHubToken     string
-	initDBPath          string
-	initForce           bool
-	initEmbedProvider   string
-	initGenProvider     string
-	initEmbedAPIKey     string
-	initGenAPIKey       string
+	initGitHubToken   string
+	initDBPath        string
+	initForce         bool
+	initEmbedProvider string
+	initGenProvider   string
+	initEmbedAPIKey   string
+	initGenAPIKey     string
 )
 
 func init() {
@@ -201,7 +201,7 @@ func selectEmbeddingProvider(providerFlag, apiKeyFlag string, red, dim, green fu
 		}
 
 		var customMaxTokens int
-		fmt.Sscanf(maxTokensStr, "%d", &customMaxTokens)
+		_, _ = fmt.Sscanf(maxTokensStr, "%d", &customMaxTokens)
 
 		if customMaxTokens > 0 && customMaxTokens != defaultMaxTokens {
 			cfg.MaxTokens = customMaxTokens
@@ -252,7 +252,7 @@ func selectGenerationProvider(providerFlag, apiKeyFlag string, red, dim, green f
 		fmt.Println()
 		reuseKey := false
 		prompt := &survey.Confirm{
-			Message: fmt.Sprintf("Use the same API key for generation?"),
+			Message: "Use the same API key for generation?",
 			Default: true,
 		}
 		if err := survey.AskOne(prompt, &reuseKey); err == nil && reuseKey {

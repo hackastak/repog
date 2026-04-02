@@ -84,7 +84,7 @@ func (a *AnthropicLLMProvider) Call(ctx context.Context, req provider.LLMRequest
 	}
 
 	// Build messages array - Anthropic format
-	messages := []message{}
+	messages := make([]message, 0, 1)
 
 	// User message with the prompt
 	messages = append(messages, message{
@@ -376,11 +376,11 @@ type message struct {
 }
 
 type messagesResponse struct {
-	ID      string          `json:"id"`
-	Type    string          `json:"type"`
-	Role    string          `json:"role"`
-	Content []contentBlock  `json:"content"`
-	Usage   *usageInfo      `json:"usage"`
+	ID      string         `json:"id"`
+	Type    string         `json:"type"`
+	Role    string         `json:"role"`
+	Content []contentBlock `json:"content"`
+	Usage   *usageInfo     `json:"usage"`
 }
 
 type contentBlock struct {
@@ -395,10 +395,10 @@ type usageInfo struct {
 
 // Streaming event types
 type streamEvent struct {
-	Type    string              `json:"type"`
-	Delta   *delta              `json:"delta,omitempty"`
-	Usage   *usageInfo          `json:"usage,omitempty"`
-	Message *messagesResponse   `json:"message,omitempty"`
+	Type    string            `json:"type"`
+	Delta   *delta            `json:"delta,omitempty"`
+	Usage   *usageInfo        `json:"usage,omitempty"`
+	Message *messagesResponse `json:"message,omitempty"`
 }
 
 type delta struct {

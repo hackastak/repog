@@ -13,8 +13,8 @@ import (
 	"github.com/hackastak/repog/internal/config"
 	"github.com/hackastak/repog/internal/db"
 	"github.com/hackastak/repog/internal/format"
-	_ "github.com/hackastak/repog/internal/provider/gemini"
 	"github.com/hackastak/repog/internal/provider"
+	_ "github.com/hackastak/repog/internal/provider/gemini"
 )
 
 var askCmd = &cobra.Command{

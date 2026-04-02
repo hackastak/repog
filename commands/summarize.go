@@ -11,8 +11,8 @@ import (
 
 	"github.com/hackastak/repog/internal/config"
 	"github.com/hackastak/repog/internal/db"
-	_ "github.com/hackastak/repog/internal/provider/gemini"
 	"github.com/hackastak/repog/internal/provider"
+	_ "github.com/hackastak/repog/internal/provider/gemini"
 	"github.com/hackastak/repog/internal/summarize"
 )
 

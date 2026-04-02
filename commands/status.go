@@ -35,11 +35,11 @@ func init() {
 // statusResult contains all status information.
 type statusResult struct {
 	Repos struct {
-		Total        int `json:"total"`
-		Owned        int `json:"owned"`
-		Starred      int `json:"starred"`
+		Total         int `json:"total"`
+		Owned         int `json:"owned"`
+		Starred       int `json:"starred"`
 		EmbeddedCount int `json:"embeddedCount"`
-		PendingEmbed int `json:"pendingEmbed"`
+		PendingEmbed  int `json:"pendingEmbed"`
 	} `json:"repos"`
 	Sync struct {
 		LastSyncedAt   *string `json:"lastSyncedAt"`

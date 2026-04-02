@@ -9,7 +9,7 @@ func TestOpenCreatesAllTables(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")
 
-	db, err := Open(dbPath)
+	db, err := Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Open failed: %v", err)
 	}
@@ -40,14 +40,14 @@ func TestOpenIsIdempotent(t *testing.T) {
 	dbPath := filepath.Join(dir, "test.db")
 
 	// Open first time
-	db1, err := Open(dbPath)
+	db1, err := Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("First Open failed: %v", err)
 	}
 	_ = Close(db1)
 
 	// Open second time - should not error
-	db2, err := Open(dbPath)
+	db2, err := Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Second Open failed: %v", err)
 	}
@@ -58,7 +58,7 @@ func TestWALModeEnabled(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")
 
-	db, err := Open(dbPath)
+	db, err := Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Open failed: %v", err)
 	}
@@ -78,7 +78,7 @@ func TestVecVersionAvailable(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")
 
-	db, err := Open(dbPath)
+	db, err := Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Open failed: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestForeignKeyEnforcement(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")
 
-	db, err := Open(dbPath)
+	db, err := Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Open failed: %v", err)
 	}

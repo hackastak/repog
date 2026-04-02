@@ -354,9 +354,9 @@ type chatCompletionResponse struct {
 }
 
 type choice struct {
-	Message      message     `json:"message"`
+	Message      message      `json:"message"`
 	Delta        messageDelta `json:"delta,omitempty"`
-	FinishReason string      `json:"finish_reason"`
+	FinishReason string       `json:"finish_reason"`
 }
 
 type messageDelta struct {

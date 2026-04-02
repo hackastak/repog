@@ -19,8 +19,8 @@ type EmbedOptions struct {
 
 // EmbedEvent represents a progress event from the embedding pipeline.
 type EmbedEvent struct {
-	Type           string   // "batch", "repo_skip", "error", "done"
-	RepoFullName   string   // for repo_skip
+	Type           string // "batch", "repo_skip", "error", "done"
+	RepoFullName   string // for repo_skip
 	BatchIndex     int
 	BatchTotal     int
 	ChunksEmbedded int

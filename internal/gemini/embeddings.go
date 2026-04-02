@@ -67,9 +67,9 @@ type batchEmbedRequest struct {
 }
 
 type embedContentRequest struct {
-	Model               string       `json:"model"`
-	Content             contentParts `json:"content"`
-	TaskType            string       `json:"taskType"`
+	Model                string       `json:"model"`
+	Content              contentParts `json:"content"`
+	TaskType             string       `json:"taskType"`
 	OutputDimensionality int          `json:"outputDimensionality,omitempty"`
 }
 
@@ -111,7 +111,7 @@ func EmbedChunks(ctx context.Context, apiKey string, chunks []EmbedRequest) Batc
 			Content: contentParts{
 				Parts: []textPart{{Text: chunk.Content}},
 			},
-			TaskType:            "RETRIEVAL_DOCUMENT",
+			TaskType:             "RETRIEVAL_DOCUMENT",
 			OutputDimensionality: EmbeddingDimensions,
 		}
 	}
@@ -200,9 +200,9 @@ func EmbedChunks(ctx context.Context, apiKey string, chunks []EmbedRequest) Batc
 
 // embedQueryRequest is the request body for single embedContent.
 type embedQueryRequest struct {
-	Model               string       `json:"model"`
-	Content             contentParts `json:"content"`
-	TaskType            string       `json:"taskType"`
+	Model                string       `json:"model"`
+	Content              contentParts `json:"content"`
+	TaskType             string       `json:"taskType"`
 	OutputDimensionality int          `json:"outputDimensionality,omitempty"`
 }
 
@@ -219,7 +219,7 @@ func EmbedQuery(ctx context.Context, apiKey string, query string) []float32 {
 		Content: contentParts{
 			Parts: []textPart{{Text: query}},
 		},
-		TaskType:            "RETRIEVAL_QUERY",
+		TaskType:             "RETRIEVAL_QUERY",
 		OutputDimensionality: EmbeddingDimensions,
 	}
 

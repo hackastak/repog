@@ -53,18 +53,18 @@ func makeTestRepo(id int64, fullName, owner, name string) github.Repo {
 	desc := "A test repository"
 	lang := "Go"
 	return github.Repo{
-		ID:            id,
-		FullName:      fullName,
-		Name:          name,
-		Owner:         github.Owner{Login: owner},
-		Description:   &desc,
-		Language:      &lang,
+		ID:              id,
+		FullName:        fullName,
+		Name:            name,
+		Owner:           github.Owner{Login: owner},
+		Description:     &desc,
+		Language:        &lang,
 		StargazersCount: 100,
-		ForksCount:    10,
-		DefaultBranch: "main",
-		PushedAt:      "2024-01-15T10:00:00Z",
-		HTMLURL:       "https://github.com/" + fullName,
-		Topics:        []string{"cli", "tool"},
+		ForksCount:      10,
+		DefaultBranch:   "main",
+		PushedAt:        "2024-01-15T10:00:00Z",
+		HTMLURL:         "https://github.com/" + fullName,
+		Topics:          []string{"cli", "tool"},
 	}
 }
 
@@ -97,7 +97,7 @@ func TestIngestRepos_NewRepo(t *testing.T) {
 
 	// Open test database
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -173,7 +173,7 @@ func TestIngestRepos_NewRepo(t *testing.T) {
 func TestIngestRepos_GeneratesMetadataReadmeAndFileTreeChunks(t *testing.T) {
 	// Open test database
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -224,7 +224,7 @@ func TestIngestRepos_GeneratesMetadataReadmeAndFileTreeChunks(t *testing.T) {
 
 func TestIngestRepos_NoReadme_OnlyMetadataChunk(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -270,7 +270,7 @@ func TestIngestRepos_NoReadme_OnlyMetadataChunk(t *testing.T) {
 
 func TestIngestRepos_SkipsUnchangedRepo(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -310,7 +310,7 @@ func TestIngestRepos_SkipsUnchangedRepo(t *testing.T) {
 
 func TestIngestRepos_UpdatesChangedRepo(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -361,7 +361,7 @@ func TestIngestRepos_UpdatesChangedRepo(t *testing.T) {
 
 func TestIngestRepos_DeduplicatesOwnedAndStarred(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -398,7 +398,7 @@ func TestIngestRepos_DeduplicatesOwnedAndStarred(t *testing.T) {
 
 func TestIngestRepos_SyncStateCompletedOnSuccess(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -438,7 +438,7 @@ func TestIngestRepos_SyncStateCompletedOnSuccess(t *testing.T) {
 
 func TestIngestRepos_SyncStateFailedOnError(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -509,7 +509,7 @@ func TestIngestRepos_WithMockServer(t *testing.T) {
 
 	// Open test database
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -598,7 +598,7 @@ func TestIngestRepos_StarredRepos(t *testing.T) {
 	defer github.ResetDefaultBaseURL()
 
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -657,7 +657,7 @@ func TestIngestRepos_SkipsUnchanged(t *testing.T) {
 	defer github.ResetDefaultBaseURL()
 
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -722,7 +722,7 @@ func TestIngestRepos_FullTreeSyncsWhenFileTreeMissing(t *testing.T) {
 	defer github.ResetDefaultBaseURL()
 
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -833,7 +833,7 @@ func TestIngestRepos_FullTreeAfterRegularSync(t *testing.T) {
 	defer github.ResetDefaultBaseURL()
 
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -919,7 +919,7 @@ func TestIngestRepos_HandlesAPIError(t *testing.T) {
 	defer github.ResetDefaultBaseURL()
 
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -970,7 +970,7 @@ func TestIngestRepos_OwnedAndStarred(t *testing.T) {
 	defer github.ResetDefaultBaseURL()
 
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}

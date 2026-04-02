@@ -46,7 +46,7 @@ type chunkRecord struct {
 
 // buildSummarizePrompt builds the summarization prompt.
 func buildSummarizePrompt(repo string, chunks []chunkRecord) string {
-	var contextParts []string
+	contextParts := make([]string, 0, len(chunks))
 	for _, chunk := range chunks {
 		contextParts = append(contextParts, fmt.Sprintf("--- %s ---\n%s", chunk.ChunkType, chunk.Content))
 	}

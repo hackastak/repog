@@ -2,14 +2,11 @@ package embed
 
 import (
 	"context"
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"path/filepath"
 	"testing"
 
 	"github.com/hackastak/repog/internal/db"
-	"github.com/hackastak/repog/internal/gemini"
+	"github.com/hackastak/repog/internal/provider"
 )
 
 // makeTestEmbedding creates a 768-dimension embedding with a seed value
@@ -24,7 +21,7 @@ func makeTestEmbedding(seed float32) []float32 {
 func TestRunEmbedPipeline_EmbedsSingleBatch(t *testing.T) {
 	// Open test database
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -51,27 +48,11 @@ func TestRunEmbedPipeline_EmbedsSingleBatch(t *testing.T) {
 		t.Fatalf("Failed to insert chunk: %v", err)
 	}
 
-	// Set up mock Gemini server returning valid 768-dim embeddings
-	embedding := makeTestEmbedding(0.5)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := map[string]interface{}{
-			"embeddings": []map[string]interface{}{
-				{"values": embedding},
-			},
-		}
-		_ = json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
-
-	// Override Gemini base URL
-	gemini.SetBaseURL(server.URL)
-	defer gemini.ResetBaseURL()
-
-	// Run embed pipeline
+	// Run embed pipeline with mock provider
 	eventCh := RunEmbedPipeline(context.Background(), EmbedOptions{
-		DB:           database,
-		GeminiAPIKey: "test-key",
-		BatchSize:    10,
+		DB:                database,
+		EmbeddingProvider: provider.NewMockEmbeddingProvider(),
+		BatchSize:         10,
 	})
 
 	// Drain events
@@ -110,7 +91,7 @@ func TestRunEmbedPipeline_EmbedsSingleBatch(t *testing.T) {
 
 func TestRunEmbedPipeline_SkipsAlreadyEmbeddedRepo(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -141,32 +122,28 @@ func TestRunEmbedPipeline_SkipsAlreadyEmbeddedRepo(t *testing.T) {
 	// Insert embedding for the chunk so it's considered fully embedded
 	chunkID, _ := result.LastInsertId()
 	_, err = database.Exec("INSERT INTO chunk_embeddings (chunk_id, embedding) VALUES (?, ?)",
-		chunkID, gemini.Float32SliceToBytes(makeTestEmbedding(0.5)))
+		chunkID, provider.Float32SliceToBytes(makeTestEmbedding(0.5)))
 	if err != nil {
 		t.Fatalf("Failed to insert chunk embedding: %v", err)
 	}
 
-	// Track API calls
+	// Track API calls via mock provider
 	apiCalls := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mockProvider := provider.NewMockEmbeddingProvider()
+	mockProvider.EmbedFunc = func(_ context.Context, chunks []provider.EmbedRequest) provider.BatchEmbedResult {
 		apiCalls++
-		resp := map[string]interface{}{
-			"embeddings": []map[string]interface{}{
-				{"values": makeTestEmbedding(0.5)},
-			},
+		results := make([]provider.EmbedResult, len(chunks))
+		for i, c := range chunks {
+			results[i] = provider.EmbedResult{ID: c.ID, Embedding: makeTestEmbedding(0.5)}
 		}
-		_ = json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
-
-	gemini.SetBaseURL(server.URL)
-	defer gemini.ResetBaseURL()
+		return provider.BatchEmbedResult{Results: results}
+	}
 
 	// Run embed pipeline
 	eventCh := RunEmbedPipeline(context.Background(), EmbedOptions{
-		DB:           database,
-		GeminiAPIKey: "test-key",
-		BatchSize:    10,
+		DB:                database,
+		EmbeddingProvider: mockProvider,
+		BatchSize:         10,
 	})
 
 	// Drain events and look for repo_skip
@@ -181,7 +158,7 @@ func TestRunEmbedPipeline_SkipsAlreadyEmbeddedRepo(t *testing.T) {
 		t.Error("Expected repo_skip event for already embedded repo")
 	}
 
-	// Verify Gemini API was NOT called (repo was skipped)
+	// Verify embedding API was NOT called (repo was skipped)
 	if apiCalls != 0 {
 		t.Errorf("Expected 0 API calls (repo should be skipped), got %d", apiCalls)
 	}
@@ -189,7 +166,7 @@ func TestRunEmbedPipeline_SkipsAlreadyEmbeddedRepo(t *testing.T) {
 
 func TestRunEmbedPipeline_BatchesChunksCorrectly(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -212,39 +189,23 @@ func TestRunEmbedPipeline_BatchesChunksCorrectly(t *testing.T) {
 		}
 	}
 
-	// Track API requests
+	// Track API requests via mock provider
 	apiRequests := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mockProvider := provider.NewMockEmbeddingProvider()
+	mockProvider.EmbedFunc = func(_ context.Context, chunks []provider.EmbedRequest) provider.BatchEmbedResult {
 		apiRequests++
-		// Return embeddings for all chunks in the request
-		var reqBody map[string]interface{}
-		if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
-			t.Logf("Failed to decode request body: %v", err)
+		results := make([]provider.EmbedResult, len(chunks))
+		for i, c := range chunks {
+			results[i] = provider.EmbedResult{ID: c.ID, Embedding: makeTestEmbedding(float32(i))}
 		}
-
-		requests, ok := reqBody["requests"].([]interface{})
-		if !ok {
-			requests = []interface{}{}
-		}
-
-		embeddings := make([]map[string]interface{}, len(requests))
-		for i := range embeddings {
-			embeddings[i] = map[string]interface{}{"values": makeTestEmbedding(float32(i))}
-		}
-
-		resp := map[string]interface{}{"embeddings": embeddings}
-		_ = json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
-
-	gemini.SetBaseURL(server.URL)
-	defer gemini.ResetBaseURL()
+		return provider.BatchEmbedResult{Results: results}
+	}
 
 	// Run embed pipeline with batch size of 10
 	eventCh := RunEmbedPipeline(context.Background(), EmbedOptions{
-		DB:           database,
-		GeminiAPIKey: "test-key",
-		BatchSize:    10,
+		DB:                database,
+		EmbeddingProvider: mockProvider,
+		BatchSize:         10,
 	})
 
 	// Drain events
@@ -259,7 +220,7 @@ func TestRunEmbedPipeline_BatchesChunksCorrectly(t *testing.T) {
 
 func TestRunEmbedPipeline_ExcludesFileTreeByDefault(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -292,34 +253,24 @@ func TestRunEmbedPipeline_ExcludesFileTreeByDefault(t *testing.T) {
 		t.Fatalf("Failed to insert file_tree chunk: %v", err)
 	}
 
-	// Track chunks sent to API
+	// Track chunks sent to API via mock provider
 	chunksReceived := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var reqBody map[string]interface{}
-		if err := json.NewDecoder(r.Body).Decode(&reqBody); err == nil {
-			if requests, ok := reqBody["requests"].([]interface{}); ok {
-				chunksReceived = len(requests)
-			}
+	mockProvider := provider.NewMockEmbeddingProvider()
+	mockProvider.EmbedFunc = func(_ context.Context, chunks []provider.EmbedRequest) provider.BatchEmbedResult {
+		chunksReceived = len(chunks)
+		results := make([]provider.EmbedResult, len(chunks))
+		for i, c := range chunks {
+			results[i] = provider.EmbedResult{ID: c.ID, Embedding: makeTestEmbedding(float32(i))}
 		}
-
-		embeddings := make([]map[string]interface{}, chunksReceived)
-		for i := range embeddings {
-			embeddings[i] = map[string]interface{}{"values": makeTestEmbedding(float32(i))}
-		}
-		resp := map[string]interface{}{"embeddings": embeddings}
-		_ = json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
-
-	gemini.SetBaseURL(server.URL)
-	defer gemini.ResetBaseURL()
+		return provider.BatchEmbedResult{Results: results}
+	}
 
 	// Run embed pipeline with IncludeFileTree=false (default)
 	eventCh := RunEmbedPipeline(context.Background(), EmbedOptions{
-		DB:              database,
-		GeminiAPIKey:    "test-key",
-		BatchSize:       10,
-		IncludeFileTree: false,
+		DB:                database,
+		EmbeddingProvider: mockProvider,
+		BatchSize:         10,
+		IncludeFileTree:   false,
 	})
 
 	for range eventCh {
@@ -343,7 +294,7 @@ func TestRunEmbedPipeline_ExcludesFileTreeByDefault(t *testing.T) {
 
 func TestRunEmbedPipeline_IncludesFileTreeWhenFlagSet(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -376,34 +327,24 @@ func TestRunEmbedPipeline_IncludesFileTreeWhenFlagSet(t *testing.T) {
 		t.Fatalf("Failed to insert file_tree chunk: %v", err)
 	}
 
-	// Track chunks sent to API
+	// Track chunks sent to API via mock provider
 	chunksReceived := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var reqBody map[string]interface{}
-		if err := json.NewDecoder(r.Body).Decode(&reqBody); err == nil {
-			if requests, ok := reqBody["requests"].([]interface{}); ok {
-				chunksReceived = len(requests)
-			}
+	mockProvider := provider.NewMockEmbeddingProvider()
+	mockProvider.EmbedFunc = func(_ context.Context, chunks []provider.EmbedRequest) provider.BatchEmbedResult {
+		chunksReceived = len(chunks)
+		results := make([]provider.EmbedResult, len(chunks))
+		for i, c := range chunks {
+			results[i] = provider.EmbedResult{ID: c.ID, Embedding: makeTestEmbedding(float32(i))}
 		}
-
-		embeddings := make([]map[string]interface{}, chunksReceived)
-		for i := range embeddings {
-			embeddings[i] = map[string]interface{}{"values": makeTestEmbedding(float32(i))}
-		}
-		resp := map[string]interface{}{"embeddings": embeddings}
-		_ = json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
-
-	gemini.SetBaseURL(server.URL)
-	defer gemini.ResetBaseURL()
+		return provider.BatchEmbedResult{Results: results}
+	}
 
 	// Run embed pipeline with IncludeFileTree=true
 	eventCh := RunEmbedPipeline(context.Background(), EmbedOptions{
-		DB:              database,
-		GeminiAPIKey:    "test-key",
-		BatchSize:       10,
-		IncludeFileTree: true,
+		DB:                database,
+		EmbeddingProvider: mockProvider,
+		BatchSize:         10,
+		IncludeFileTree:   true,
 	})
 
 	for range eventCh {
@@ -427,7 +368,7 @@ func TestRunEmbedPipeline_IncludesFileTreeWhenFlagSet(t *testing.T) {
 
 func TestRunEmbedPipeline_UpdatesEmbeddedHashAfterSuccess(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -462,23 +403,10 @@ func TestRunEmbedPipeline_UpdatesEmbeddedHashAfterSuccess(t *testing.T) {
 		t.Error("Expected embedded_hash to be NULL before pipeline")
 	}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := map[string]interface{}{
-			"embeddings": []map[string]interface{}{
-				{"values": makeTestEmbedding(0.5)},
-			},
-		}
-		_ = json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
-
-	gemini.SetBaseURL(server.URL)
-	defer gemini.ResetBaseURL()
-
 	eventCh := RunEmbedPipeline(context.Background(), EmbedOptions{
-		DB:           database,
-		GeminiAPIKey: "test-key",
-		BatchSize:    10,
+		DB:                database,
+		EmbeddingProvider: provider.NewMockEmbeddingProvider(),
+		BatchSize:         10,
 	})
 
 	for range eventCh {
@@ -497,7 +425,7 @@ func TestRunEmbedPipeline_UpdatesEmbeddedHashAfterSuccess(t *testing.T) {
 
 func TestRunEmbedPipeline_DoneEventHasCorrectTotals(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -531,25 +459,12 @@ func TestRunEmbedPipeline_DoneEventHasCorrectTotals(t *testing.T) {
 	// Insert embedding for repo1's chunk so it's considered fully embedded
 	chunk1ID, _ := result1.LastInsertId()
 	_, _ = database.Exec("INSERT INTO chunk_embeddings (chunk_id, embedding) VALUES (?, ?)",
-		chunk1ID, gemini.Float32SliceToBytes(makeTestEmbedding(0.5)))
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := map[string]interface{}{
-			"embeddings": []map[string]interface{}{
-				{"values": makeTestEmbedding(0.5)},
-			},
-		}
-		_ = json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
-
-	gemini.SetBaseURL(server.URL)
-	defer gemini.ResetBaseURL()
+		chunk1ID, provider.Float32SliceToBytes(makeTestEmbedding(0.5)))
 
 	eventCh := RunEmbedPipeline(context.Background(), EmbedOptions{
-		DB:           database,
-		GeminiAPIKey: "test-key",
-		BatchSize:    10,
+		DB:                database,
+		EmbeddingProvider: provider.NewMockEmbeddingProvider(),
+		BatchSize:         10,
 	})
 
 	var doneEvent EmbedEvent

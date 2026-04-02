@@ -57,12 +57,12 @@ var ollamaModelDefaults = map[string]OllamaModelSpec{
 	"snowflake-arctic-embed:latest": {Dimensions: 1024, MaxTokens: 512},
 
 	// snowflake-arctic-embed v2 variants: 8k context with RoPE
-	"snowflake-arctic-embed:l-v2.0":      {Dimensions: 1024, MaxTokens: 8192},
-	"snowflake-arctic-embed:m-v2.0":      {Dimensions: 768, MaxTokens: 8192},
-	"snowflake-arctic-embed2":            {Dimensions: 1024, MaxTokens: 8192},
-	"snowflake-arctic-embed-l-v2.0":      {Dimensions: 1024, MaxTokens: 8192},
-	"snowflake-arctic-embed-m-v2.0":      {Dimensions: 768, MaxTokens: 8192},
-	"snowflake-arctic-embed:m-long":      {Dimensions: 768, MaxTokens: 2048},
+	"snowflake-arctic-embed:l-v2.0": {Dimensions: 1024, MaxTokens: 8192},
+	"snowflake-arctic-embed:m-v2.0": {Dimensions: 768, MaxTokens: 8192},
+	"snowflake-arctic-embed2":       {Dimensions: 1024, MaxTokens: 8192},
+	"snowflake-arctic-embed-l-v2.0": {Dimensions: 1024, MaxTokens: 8192},
+	"snowflake-arctic-embed-m-v2.0": {Dimensions: 768, MaxTokens: 8192},
+	"snowflake-arctic-embed:m-long": {Dimensions: 768, MaxTokens: 2048},
 
 	// BGE models from BAAI
 	"bge-m3":            {Dimensions: 1024, MaxTokens: 8192},

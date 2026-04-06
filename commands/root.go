@@ -5,10 +5,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// version is set via ldflags during build
+var version = "dev"
+
 var rootCmd = &cobra.Command{
 	Use:     "repog",
 	Short:   "AI-powered knowledge base for your GitHub repositories",
-	Version: "0.1.0",
+	Version: version,
 	Long: `RepoG is an AI-powered CLI tool that lets developers build a searchable
 knowledge base from their GitHub repositories. It ingests repo metadata,
 READMEs, and file trees; generates vector embeddings via Google Gemini;

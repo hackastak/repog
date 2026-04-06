@@ -3,15 +3,12 @@ package search
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"math"
-	"net/http"
-	"net/http/httptest"
 	"path/filepath"
 	"testing"
 
 	"github.com/hackastak/repog/internal/db"
-	"github.com/hackastak/repog/internal/gemini"
+	"github.com/hackastak/repog/internal/provider"
 )
 
 // makeTestEmbedding creates a 768-dimension embedding with a seed value
@@ -23,8 +20,21 @@ func makeTestEmbedding(seed float32) []float32 {
 	return e
 }
 
+// newMockEmbedProvider creates a mock embedding provider that returns embeddings with the given seed
+func newMockEmbedProvider(querySeed float32) *provider.MockEmbeddingProvider { //nolint:unparam
+	return &provider.MockEmbeddingProvider{
+		NameVal:       "mock",
+		DimensionsVal: 768,
+		BatchSizeVal:  20,
+		MaxTokensVal:  8192,
+		QueryFunc: func(_ context.Context, _ string) []float32 {
+			return makeTestEmbedding(querySeed)
+		},
+	}
+}
+
 // insertTestRepoWithEmbedding inserts a test repo with a chunk and embedding
-func insertTestRepoWithEmbedding(t *testing.T, database *sql.DB, githubID int64, fullName, owner, name, lang string, stars int, isOwned, isStarred bool, embeddingSeed float32) int64 {
+func insertTestRepoWithEmbedding(t *testing.T, database *sql.DB, githubID int64, fullName, owner, name, lang string, stars int, isOwned, isStarred bool, embeddingSeed float32) int64 { //nolint:unparam
 	isOwnedInt := 0
 	if isOwned {
 		isOwnedInt = 1
@@ -58,7 +68,7 @@ func insertTestRepoWithEmbedding(t *testing.T, database *sql.DB, githubID int64,
 
 	// Insert embedding
 	embedding := makeTestEmbedding(embeddingSeed)
-	embeddingBlob := gemini.Float32SliceToBytes(embedding)
+	embeddingBlob := provider.Float32SliceToBytes(embedding)
 	_, err = database.Exec("INSERT INTO chunk_embeddings (chunk_id, embedding) VALUES (?, ?)", chunkID, embeddingBlob)
 	if err != nil {
 		t.Fatalf("Failed to insert embedding: %v", err)
@@ -69,7 +79,7 @@ func insertTestRepoWithEmbedding(t *testing.T, database *sql.DB, githubID int64,
 
 func TestSearchRepos_ReturnsResultsOrderedBySimilarity(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -82,23 +92,11 @@ func TestSearchRepos_ReturnsResultsOrderedBySimilarity(t *testing.T) {
 	insertTestRepoWithEmbedding(t, database, 2, "user/repo2", "user", "repo2", "Go", 50, false, true, 2.0)
 	insertTestRepoWithEmbedding(t, database, 3, "user/repo3", "user", "repo3", "Go", 25, false, false, 5.0)
 
-	// Mock Gemini server to return query embedding (seed 0.5 - closest to repo1)
-	queryEmbedding := makeTestEmbedding(0.5)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := map[string]interface{}{
-			"embedding": map[string]interface{}{
-				"values": queryEmbedding,
-			},
-		}
-		_ = json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
-
-	gemini.SetBaseURL(server.URL)
-	defer gemini.ResetBaseURL()
+	// Mock provider returns query embedding (seed 0.5 - closest to repo1)
+	mockProvider := newMockEmbedProvider(0.5)
 
 	// Search
-	result, err := SearchRepos(context.Background(), database, "test-key", "test query", SearchFilters{
+	result, err := SearchRepos(context.Background(), database, mockProvider, "test query", SearchFilters{
 		Limit: 10,
 	})
 	if err != nil {
@@ -133,7 +131,7 @@ func TestSearchRepos_ReturnsResultsOrderedBySimilarity(t *testing.T) {
 
 func TestSearchRepos_LanguageFilterWorks(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -143,23 +141,11 @@ func TestSearchRepos_LanguageFilterWorks(t *testing.T) {
 	insertTestRepoWithEmbedding(t, database, 1, "user/go-repo", "user", "go-repo", "Go", 100, true, false, 0.5)
 	insertTestRepoWithEmbedding(t, database, 2, "user/ts-repo", "user", "ts-repo", "TypeScript", 100, true, false, 0.5)
 
-	// Mock Gemini server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := map[string]interface{}{
-			"embedding": map[string]interface{}{
-				"values": makeTestEmbedding(0.5),
-			},
-		}
-		_ = json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
-
-	gemini.SetBaseURL(server.URL)
-	defer gemini.ResetBaseURL()
+	mockProvider := newMockEmbedProvider(0.5)
 
 	// Search with Go language filter
 	lang := "Go"
-	result, err := SearchRepos(context.Background(), database, "test-key", "test query", SearchFilters{
+	result, err := SearchRepos(context.Background(), database, mockProvider, "test query", SearchFilters{
 		Language: &lang,
 		Limit:    10,
 	})
@@ -178,7 +164,7 @@ func TestSearchRepos_LanguageFilterWorks(t *testing.T) {
 
 func TestSearchRepos_StarredFilterWorks(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -188,22 +174,11 @@ func TestSearchRepos_StarredFilterWorks(t *testing.T) {
 	insertTestRepoWithEmbedding(t, database, 1, "user/starred-repo", "user", "starred-repo", "Go", 100, false, true, 0.5)
 	insertTestRepoWithEmbedding(t, database, 2, "user/not-starred-repo", "user", "not-starred-repo", "Go", 100, false, false, 0.5)
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := map[string]interface{}{
-			"embedding": map[string]interface{}{
-				"values": makeTestEmbedding(0.5),
-			},
-		}
-		_ = json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
-
-	gemini.SetBaseURL(server.URL)
-	defer gemini.ResetBaseURL()
+	mockProvider := newMockEmbedProvider(0.5)
 
 	// Search with starred filter
 	starred := true
-	result, err := SearchRepos(context.Background(), database, "test-key", "test query", SearchFilters{
+	result, err := SearchRepos(context.Background(), database, mockProvider, "test query", SearchFilters{
 		Starred: &starred,
 		Limit:   10,
 	})
@@ -222,7 +197,7 @@ func TestSearchRepos_StarredFilterWorks(t *testing.T) {
 
 func TestSearchRepos_OwnedFilterWorks(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -232,22 +207,11 @@ func TestSearchRepos_OwnedFilterWorks(t *testing.T) {
 	insertTestRepoWithEmbedding(t, database, 1, "user/owned-repo", "user", "owned-repo", "Go", 100, true, false, 0.5)
 	insertTestRepoWithEmbedding(t, database, 2, "user/not-owned-repo", "user", "not-owned-repo", "Go", 100, false, false, 0.5)
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := map[string]interface{}{
-			"embedding": map[string]interface{}{
-				"values": makeTestEmbedding(0.5),
-			},
-		}
-		_ = json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
-
-	gemini.SetBaseURL(server.URL)
-	defer gemini.ResetBaseURL()
+	mockProvider := newMockEmbedProvider(0.5)
 
 	// Search with owned filter
 	owned := true
-	result, err := SearchRepos(context.Background(), database, "test-key", "test query", SearchFilters{
+	result, err := SearchRepos(context.Background(), database, mockProvider, "test query", SearchFilters{
 		Owned: &owned,
 		Limit: 10,
 	})
@@ -266,7 +230,7 @@ func TestSearchRepos_OwnedFilterWorks(t *testing.T) {
 
 func TestSearchRepos_LimitRespectedAfterDeduplication(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -277,21 +241,10 @@ func TestSearchRepos_LimitRespectedAfterDeduplication(t *testing.T) {
 		insertTestRepoWithEmbedding(t, database, int64(i), "user/repo"+string(rune('0'+i)), "user", "repo"+string(rune('0'+i)), "Go", 100, true, false, float32(i)*0.1)
 	}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := map[string]interface{}{
-			"embedding": map[string]interface{}{
-				"values": makeTestEmbedding(0.5),
-			},
-		}
-		_ = json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
-
-	gemini.SetBaseURL(server.URL)
-	defer gemini.ResetBaseURL()
+	mockProvider := newMockEmbedProvider(0.5)
 
 	// Search with limit of 2
-	result, err := SearchRepos(context.Background(), database, "test-key", "test query", SearchFilters{
+	result, err := SearchRepos(context.Background(), database, mockProvider, "test query", SearchFilters{
 		Limit: 2,
 	})
 	if err != nil {
@@ -306,7 +259,7 @@ func TestSearchRepos_LimitRespectedAfterDeduplication(t *testing.T) {
 
 func TestSearchRepos_ReturnsAllChunkTypesPerRepo(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -326,29 +279,18 @@ func TestSearchRepos_ReturnsAllChunkTypesPerRepo(t *testing.T) {
 	result, _ := database.Exec("INSERT INTO chunks (repo_id, chunk_type, content) VALUES (?, 'metadata', ?)", repoID, `{"full_name":"user/repo1"}`)
 	metadataChunkID, _ := result.LastInsertId()
 	_, _ = database.Exec("INSERT INTO chunk_embeddings (chunk_id, embedding) VALUES (?, ?)",
-		metadataChunkID, gemini.Float32SliceToBytes(makeTestEmbedding(0.5)))
+		metadataChunkID, provider.Float32SliceToBytes(makeTestEmbedding(0.5)))
 
 	// Insert readme chunk with embedding (close to query)
 	result, _ = database.Exec("INSERT INTO chunks (repo_id, chunk_type, content) VALUES (?, 'readme', ?)", repoID, "# README")
 	readmeChunkID, _ := result.LastInsertId()
 	_, _ = database.Exec("INSERT INTO chunk_embeddings (chunk_id, embedding) VALUES (?, ?)",
-		readmeChunkID, gemini.Float32SliceToBytes(makeTestEmbedding(0.5)))
+		readmeChunkID, provider.Float32SliceToBytes(makeTestEmbedding(0.5)))
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := map[string]interface{}{
-			"embedding": map[string]interface{}{
-				"values": makeTestEmbedding(0.5),
-			},
-		}
-		_ = json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
-
-	gemini.SetBaseURL(server.URL)
-	defer gemini.ResetBaseURL()
+	mockProvider := newMockEmbedProvider(0.5)
 
 	// Search
-	searchResult, err := SearchRepos(context.Background(), database, "test-key", "test query", SearchFilters{
+	searchResult, err := SearchRepos(context.Background(), database, mockProvider, "test query", SearchFilters{
 		Limit: 10,
 	})
 	if err != nil {
@@ -373,7 +315,7 @@ func TestSearchRepos_ReturnsAllChunkTypesPerRepo(t *testing.T) {
 
 func TestSearchRepos_ReturnsEmptyOnNilEmbedding(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -382,18 +324,19 @@ func TestSearchRepos_ReturnsEmptyOnNilEmbedding(t *testing.T) {
 	// Insert a repo with embedding
 	insertTestRepoWithEmbedding(t, database, 1, "user/repo1", "user", "repo1", "Go", 100, true, false, 0.5)
 
-	// Mock Gemini server to return 500 error
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte("Internal Server Error"))
-	}))
-	defer server.Close()
-
-	gemini.SetBaseURL(server.URL)
-	defer gemini.ResetBaseURL()
+	// Mock provider that returns nil embedding (simulating failure)
+	mockProvider := &provider.MockEmbeddingProvider{
+		NameVal:       "mock",
+		DimensionsVal: 768,
+		BatchSizeVal:  20,
+		MaxTokensVal:  8192,
+		QueryFunc: func(_ context.Context, _ string) []float32 {
+			return nil
+		},
+	}
 
 	// Search - should return empty results, no error
-	result, err := SearchRepos(context.Background(), database, "test-key", "test query", SearchFilters{
+	result, err := SearchRepos(context.Background(), database, mockProvider, "test query", SearchFilters{
 		Limit: 10,
 	})
 
@@ -408,7 +351,7 @@ func TestSearchRepos_ReturnsEmptyOnNilEmbedding(t *testing.T) {
 
 func TestSearchRepos_SimilarityIsBetween0And1(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -417,20 +360,10 @@ func TestSearchRepos_SimilarityIsBetween0And1(t *testing.T) {
 	// Insert a repo with embedding
 	insertTestRepoWithEmbedding(t, database, 1, "user/repo1", "user", "repo1", "Go", 100, true, false, 0.5)
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := map[string]interface{}{
-			"embedding": map[string]interface{}{
-				"values": makeTestEmbedding(0.5), // Same as repo embedding
-			},
-		}
-		_ = json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
+	// Mock provider returns same embedding as repo
+	mockProvider := newMockEmbedProvider(0.5)
 
-	gemini.SetBaseURL(server.URL)
-	defer gemini.ResetBaseURL()
-
-	result, err := SearchRepos(context.Background(), database, "test-key", "test query", SearchFilters{
+	result, err := SearchRepos(context.Background(), database, mockProvider, "test query", SearchFilters{
 		Limit: 10,
 	})
 	if err != nil {

@@ -18,7 +18,8 @@ func init() {
 // Open opens (or creates) the SQLite database at the given path, applies all
 // pragmas, loads the sqlite-vec extension, and runs schema migrations.
 // The caller is responsible for calling Close().
-func Open(path string) (*sql.DB, error) {
+// embeddingDimensions specifies the vector size for embeddings (e.g., 768 for Gemini).
+func Open(path string, embeddingDimensions int) (*sql.DB, error) {
 	// Ensure directory exists
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0700); err != nil {
@@ -49,7 +50,7 @@ func Open(path string) (*sql.DB, error) {
 	}
 
 	// Run migrations
-	if err := RunMigrations(db); err != nil {
+	if err := RunMigrations(db, embeddingDimensions); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
@@ -83,4 +84,31 @@ func VecVersion(db *sql.DB) (string, error) {
 		return "", err
 	}
 	return version, nil
+}
+
+// MigrateEmbeddingDimensions drops and recreates the embeddings table with new dimensions.
+// This is required when changing embedding models with different vector sizes.
+// All existing embeddings will be lost and repos will need to be re-embedded.
+func MigrateEmbeddingDimensions(db *sql.DB, newDimensions int) error {
+	// Drop existing embeddings table
+	if _, err := db.Exec("DROP TABLE IF EXISTS chunk_embeddings"); err != nil {
+		return err
+	}
+
+	// Create with new dimensions
+	if _, err := db.Exec(CreateChunkEmbeddingsTableSQL(newDimensions)); err != nil {
+		return err
+	}
+
+	// Update stored dimensions
+	if err := SetEmbeddingDimensions(db, newDimensions); err != nil {
+		return err
+	}
+
+	// Clear embedded_hash on all repos to trigger re-embedding
+	if _, err := db.Exec("UPDATE repos SET embedded_hash = NULL, embedded_at = NULL"); err != nil {
+		return err
+	}
+
+	return nil
 }

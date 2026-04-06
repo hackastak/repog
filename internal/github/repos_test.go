@@ -171,7 +171,7 @@ func TestFetchReadmeReturnsEmptyOnNotFound(t *testing.T) {
 func TestFetchFileTreeReturnsOnlyBlobsAtDepthLessThanTwo(t *testing.T) {
 	tree := treeResponse{
 		Tree: []treeEntry{
-			{Path: "README.md", Type: "blob"},        // depth 0 - include
+			{Path: "README.md", Type: "blob"},         // depth 0 - include
 			{Path: "src", Type: "tree"},               // directory - exclude
 			{Path: "src/index.ts", Type: "blob"},      // depth 1 - include
 			{Path: "src/lib/helper.ts", Type: "blob"}, // depth 2 - exclude

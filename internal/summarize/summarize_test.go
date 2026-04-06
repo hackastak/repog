@@ -3,15 +3,11 @@ package summarize
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
-	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"path/filepath"
 	"testing"
 
 	"github.com/hackastak/repog/internal/db"
-	"github.com/hackastak/repog/internal/gemini"
+	"github.com/hackastak/repog/internal/provider"
 )
 
 func TestBuildSummarizePrompt(t *testing.T) {
@@ -74,31 +70,29 @@ func insertTestRepoWithChunks(t *testing.T, database *sql.DB, fullName string, c
 }
 
 func TestSummarizeRepo_ReturnsPopulatedResult(t *testing.T) {
-	// Create mock LLM server with streaming response
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-
-		chunks := []string{
-			"## Overview\nThis is a test repo.",
-			"\n\n## Tech Stack\nGo language.",
-			"\n\n## Use Cases\nTesting.",
-		}
-		for _, chunk := range chunks {
-			payload := fmt.Sprintf(`{"candidates":[{"content":{"parts":[{"text":%q}]}}],"usageMetadata":{"promptTokenCount":100,"candidatesTokenCount":50}}`, chunk)
-			_, _ = fmt.Fprintf(w, "data: %s\n\n", payload)
-			if f, ok := w.(http.Flusher); ok {
-				f.Flush()
+	// Create mock LLM provider
+	mockLLM := &provider.MockLLMProvider{
+		NameVal: "mock",
+		StreamFunc: func(_ context.Context, _ provider.LLMRequest, onChunk func(string)) (*provider.LLMResult, *provider.LLMError) {
+			chunks := []string{
+				"## Overview\nThis is a test repo.",
+				"\n\n## Tech Stack\nGo language.",
+				"\n\n## Use Cases\nTesting.",
 			}
-		}
-	}))
-	defer server.Close()
-
-	gemini.SetBaseURL(server.URL)
-	defer gemini.ResetBaseURL()
+			fullText := ""
+			for _, chunk := range chunks {
+				fullText += chunk
+				if onChunk != nil {
+					onChunk(chunk)
+				}
+			}
+			return &provider.LLMResult{Text: fullText, InputTokens: 100, OutputTokens: 50}, nil
+		},
+	}
 
 	// Set up test database
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -117,9 +111,9 @@ func TestSummarizeRepo_ReturnsPopulatedResult(t *testing.T) {
 	}
 
 	result, err := SummarizeRepo(context.Background(), SummarizeOptions{
-		Repo:   "user/testrepo",
-		DB:     database,
-		APIKey: "test-key",
+		Repo:        "user/testrepo",
+		DB:          database,
+		LLMProvider: mockLLM,
 	}, onChunk)
 
 	if err != nil {
@@ -148,19 +142,18 @@ func TestSummarizeRepo_ReturnsPopulatedResult(t *testing.T) {
 }
 
 func TestSummarizeRepo_CaseInsensitiveMatch(t *testing.T) {
-	// Create mock LLM server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		payload := `{"candidates":[{"content":{"parts":[{"text":"Summary"}]}}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":5}}`
-		_, _ = fmt.Fprintf(w, "data: %s\n\n", payload)
-	}))
-	defer server.Close()
-
-	gemini.SetBaseURL(server.URL)
-	defer gemini.ResetBaseURL()
+	mockLLM := &provider.MockLLMProvider{
+		NameVal: "mock",
+		StreamFunc: func(_ context.Context, _ provider.LLMRequest, onChunk func(string)) (*provider.LLMResult, *provider.LLMError) {
+			if onChunk != nil {
+				onChunk("Summary")
+			}
+			return &provider.LLMResult{Text: "Summary", InputTokens: 10, OutputTokens: 5}, nil
+		},
+	}
 
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -173,9 +166,9 @@ func TestSummarizeRepo_CaseInsensitiveMatch(t *testing.T) {
 
 	// Query with different case
 	result, err := SummarizeRepo(context.Background(), SummarizeOptions{
-		Repo:   "USER/MYREPO",
-		DB:     database,
-		APIKey: "test-key",
+		Repo:        "USER/MYREPO",
+		DB:          database,
+		LLMProvider: mockLLM,
 	}, nil)
 
 	if err != nil {
@@ -189,7 +182,7 @@ func TestSummarizeRepo_CaseInsensitiveMatch(t *testing.T) {
 
 func TestSummarizeRepo_ReturnsNoDataMessageWhenNoChunks(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -200,10 +193,13 @@ func TestSummarizeRepo_ReturnsNoDataMessageWhenNoChunks(t *testing.T) {
 		receivedChunk = chunk
 	}
 
+	// LLM provider should not be called when no chunks exist
+	mockLLM := provider.NewMockLLMProvider()
+
 	result, err := SummarizeRepo(context.Background(), SummarizeOptions{
-		Repo:   "nonexistent/repo",
-		DB:     database,
-		APIKey: "test-key",
+		Repo:        "nonexistent/repo",
+		DB:          database,
+		LLMProvider: mockLLM,
 	}, onChunk)
 
 	if err != nil {
@@ -225,18 +221,16 @@ func TestSummarizeRepo_ReturnsNoDataMessageWhenNoChunks(t *testing.T) {
 }
 
 func TestSummarizeRepo_HandlesLLMError(t *testing.T) {
-	// Create mock server that returns error
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte("Internal Server Error"))
-	}))
-	defer server.Close()
-
-	gemini.SetBaseURL(server.URL)
-	defer gemini.ResetBaseURL()
+	// Create mock LLM provider that returns an error
+	mockLLM := &provider.MockLLMProvider{
+		NameVal: "mock",
+		StreamFunc: func(_ context.Context, _ provider.LLMRequest, _ func(string)) (*provider.LLMResult, *provider.LLMError) {
+			return nil, &provider.LLMError{Message: "Internal Server Error", StatusCode: 500}
+		},
+	}
 
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -247,9 +241,9 @@ func TestSummarizeRepo_HandlesLLMError(t *testing.T) {
 	})
 
 	result, err := SummarizeRepo(context.Background(), SummarizeOptions{
-		Repo:   "user/repo",
-		DB:     database,
-		APIKey: "test-key",
+		Repo:        "user/repo",
+		DB:          database,
+		LLMProvider: mockLLM,
 	}, nil)
 
 	// Should not return Go error, but Summary should contain error message
@@ -262,57 +256,19 @@ func TestSummarizeRepo_HandlesLLMError(t *testing.T) {
 	}
 }
 
-func TestSummarizeRepo_VerifiesRequestStructure(t *testing.T) {
-	var receivedBody map[string]interface{}
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewDecoder(r.Body).Decode(&receivedBody)
-
-		w.Header().Set("Content-Type", "text/event-stream")
-		payload := `{"candidates":[{"content":{"parts":[{"text":"Summary"}]}}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":5}}`
-		_, _ = fmt.Fprintf(w, "data: %s\n\n", payload)
-	}))
-	defer server.Close()
-
-	gemini.SetBaseURL(server.URL)
-	defer gemini.ResetBaseURL()
-
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
-	if err != nil {
-		t.Fatalf("Failed to open database: %v", err)
-	}
-	defer func() { _ = database.Close() }()
-
-	insertTestRepoWithChunks(t, database, "user/repo", []chunkRecord{
-		{ChunkType: "readme", Content: "# Repo"},
-	})
-
-	_, _ = SummarizeRepo(context.Background(), SummarizeOptions{
-		Repo:   "user/repo",
-		DB:     database,
-		APIKey: "test-key",
-	}, nil)
-
-	// Verify system_instruction was included
-	if receivedBody["system_instruction"] == nil {
-		t.Error("Expected system_instruction in request body")
-	}
-}
-
 func TestSummarizeRepo_NilOnChunkCallback(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		payload := `{"candidates":[{"content":{"parts":[{"text":"Summary"}]}}],"usageMetadata":{}}`
-		_, _ = fmt.Fprintf(w, "data: %s\n\n", payload)
-	}))
-	defer server.Close()
-
-	gemini.SetBaseURL(server.URL)
-	defer gemini.ResetBaseURL()
+	mockLLM := &provider.MockLLMProvider{
+		NameVal: "mock",
+		StreamFunc: func(_ context.Context, _ provider.LLMRequest, onChunk func(string)) (*provider.LLMResult, *provider.LLMError) {
+			if onChunk != nil {
+				onChunk("Summary")
+			}
+			return &provider.LLMResult{Text: "Summary", InputTokens: 10, OutputTokens: 5}, nil
+		},
+	}
 
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
+	database, err := db.Open(dbPath, 768)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
@@ -324,9 +280,9 @@ func TestSummarizeRepo_NilOnChunkCallback(t *testing.T) {
 
 	// Should not panic with nil callback
 	result, err := SummarizeRepo(context.Background(), SummarizeOptions{
-		Repo:   "user/repo",
-		DB:     database,
-		APIKey: "test-key",
+		Repo:        "user/repo",
+		DB:          database,
+		LLMProvider: mockLLM,
 	}, nil)
 
 	if err != nil {

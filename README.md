@@ -65,8 +65,10 @@ This will prompt you for your API keys and store them securely in your system ke
 ### 3. Sync Your Repositories
 
 ```bash
-repog sync --owned --starred
+repog sync
 ```
+
+This syncs both your owned and starred repositories by default.
 
 ### 4. Generate Embeddings
 
@@ -98,9 +100,9 @@ repog recommend "building a CLI tool"
 ### Sync Options
 
 ```bash
+repog sync                   # Sync both owned and starred (default)
 repog sync --owned           # Sync only your own repositories
 repog sync --starred         # Sync only starred repositories
-repog sync --owned --starred # Sync both (default)
 ```
 
 ## Data & Privacy

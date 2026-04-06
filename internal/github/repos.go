@@ -12,26 +12,26 @@ import (
 
 // Repo represents a GitHub repository from the API.
 type Repo struct {
-	ID            int64    `json:"id"`
-	NodeID        string   `json:"node_id"`
-	Name          string   `json:"name"`
-	FullName      string   `json:"full_name"`
-	Description   *string  `json:"description"`
-	Private       bool     `json:"private"`
-	Owner         Owner    `json:"owner"`
-	HTMLURL       string   `json:"html_url"`
-	CloneURL      string   `json:"clone_url"`
-	Language      *string  `json:"language"`
-	StargazersCount int    `json:"stargazers_count"`
-	ForksCount    int      `json:"forks_count"`
-	DefaultBranch string   `json:"default_branch"`
-	Topics        []string `json:"topics"`
-	PushedAt      string   `json:"pushed_at"`
-	CreatedAt     string   `json:"created_at"`
-	UpdatedAt     string   `json:"updated_at"`
-	Archived      bool     `json:"archived"`
-	Fork          bool     `json:"fork"`
-	Size          int      `json:"size"`
+	ID              int64    `json:"id"`
+	NodeID          string   `json:"node_id"`
+	Name            string   `json:"name"`
+	FullName        string   `json:"full_name"`
+	Description     *string  `json:"description"`
+	Private         bool     `json:"private"`
+	Owner           Owner    `json:"owner"`
+	HTMLURL         string   `json:"html_url"`
+	CloneURL        string   `json:"clone_url"`
+	Language        *string  `json:"language"`
+	StargazersCount int      `json:"stargazers_count"`
+	ForksCount      int      `json:"forks_count"`
+	DefaultBranch   string   `json:"default_branch"`
+	Topics          []string `json:"topics"`
+	PushedAt        string   `json:"pushed_at"`
+	CreatedAt       string   `json:"created_at"`
+	UpdatedAt       string   `json:"updated_at"`
+	Archived        bool     `json:"archived"`
+	Fork            bool     `json:"fork"`
+	Size            int      `json:"size"`
 }
 
 // Owner represents a GitHub repository owner.

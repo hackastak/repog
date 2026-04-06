@@ -17,6 +17,7 @@ type IngestOptions struct {
 	IncludeOwned   bool
 	IncludeStarred bool
 	FullTree       bool
+	MaxChunkSize   int // Maximum characters per chunk (calculated from embedding model token limit)
 	DB             *sql.DB
 	GitHubPAT      string
 }
@@ -58,6 +59,44 @@ type metadataChunk struct {
 func hashPushedAt(s string) string {
 	sum := sha256.Sum256([]byte(s))
 	return fmt.Sprintf("%x", sum)
+}
+
+// CalculateMaxCharsFromTokens calculates the maximum characters based on token limit.
+// Uses a conservative ratio of ~3.3 characters per token to stay safely under limits.
+// This accounts for worst-case scenarios with special characters and encoding overhead.
+func CalculateMaxCharsFromTokens(maxTokens int) int {
+	if maxTokens <= 0 {
+		return 25000 // Fallback to original default
+	}
+	// Use 90% of token limit to provide safety margin
+	safeTokens := int(float64(maxTokens) * 0.90)
+	// Conservative ratio: 3.3 chars per token
+	// (Real-world average is ~4 chars/token, but we want to be safe)
+	return safeTokens * 3
+}
+
+// splitContent splits content into chunks if it exceeds the max size.
+// maxChars should be calculated using calculateMaxCharsFromTokens() based on the
+// embedding provider's token limit. Returns a slice of content chunks.
+func splitContent(content string, maxChars int) []string {
+	if maxChars <= 0 {
+		maxChars = 25000
+	}
+
+	if len(content) <= maxChars {
+		return []string{content}
+	}
+
+	var chunks []string
+	for i := 0; i < len(content); i += maxChars {
+		end := i + maxChars
+		if end > len(content) {
+			end = len(content)
+		}
+		chunks = append(chunks, content[i:end])
+	}
+
+	return chunks
 }
 
 // IngestRepos runs the full ingestion pipeline.
@@ -131,7 +170,7 @@ func IngestRepos(ctx context.Context, opts IngestOptions) <-chan IngestEvent {
 			if isExisting && opts.FullTree {
 				var count int
 				err := opts.DB.QueryRow(
-					"SELECT COUNT(*) FROM chunks WHERE repo_id = ? AND chunk_type = 'file_tree'",
+					"SELECT COUNT(*) FROM chunks WHERE repo_id = ? AND (chunk_type = 'file_tree' OR chunk_type LIKE 'file_tree_part_%')",
 					existingID,
 				).Scan(&count)
 				hasFileTree = err == nil && count > 0
@@ -277,30 +316,64 @@ func IngestRepos(ctx context.Context, opts IngestOptions) <-chan IngestEvent {
 				continue
 			}
 
-			// Insert readme chunk if present
+			// Insert readme chunk(s) if present
+			// Split into multiple chunks if too large
 			if readme != "" {
-				_, err = tx.Exec(
-					"INSERT INTO chunks (repo_id, chunk_type, content) VALUES (?, 'readme', ?)",
-					repoID, readme,
-				)
-				if err != nil {
-					_ = tx.Rollback()
-					errorCount++
-					eventCh <- IngestEvent{Type: "error", Repo: fullName, Reason: err.Error()}
+				chunkSize := opts.MaxChunkSize
+				if chunkSize <= 0 {
+					chunkSize = 25000 // Fallback to default
+				}
+				readmeChunks := splitContent(readme, chunkSize)
+				readmeSuccess := true
+				for i, chunk := range readmeChunks {
+					chunkType := "readme"
+					if len(readmeChunks) > 1 {
+						chunkType = fmt.Sprintf("readme_part_%d", i+1)
+					}
+					_, err = tx.Exec(
+						"INSERT INTO chunks (repo_id, chunk_type, content) VALUES (?, ?, ?)",
+						repoID, chunkType, chunk,
+					)
+					if err != nil {
+						_ = tx.Rollback()
+						errorCount++
+						eventCh <- IngestEvent{Type: "error", Repo: fullName, Reason: err.Error()}
+						readmeSuccess = false
+						break
+					}
+				}
+				if !readmeSuccess {
 					continue
 				}
 			}
 
-			// Insert file_tree chunk if present
+			// Insert file_tree chunk(s) if present
+			// Split into multiple chunks if too large
 			if fileTree != "" {
-				_, err = tx.Exec(
-					"INSERT INTO chunks (repo_id, chunk_type, content) VALUES (?, 'file_tree', ?)",
-					repoID, fileTree,
-				)
-				if err != nil {
-					_ = tx.Rollback()
-					errorCount++
-					eventCh <- IngestEvent{Type: "error", Repo: fullName, Reason: err.Error()}
+				chunkSize := opts.MaxChunkSize
+				if chunkSize <= 0 {
+					chunkSize = 25000 // Fallback to default
+				}
+				fileTreeChunks := splitContent(fileTree, chunkSize)
+				fileTreeSuccess := true
+				for i, chunk := range fileTreeChunks {
+					chunkType := "file_tree"
+					if len(fileTreeChunks) > 1 {
+						chunkType = fmt.Sprintf("file_tree_part_%d", i+1)
+					}
+					_, err = tx.Exec(
+						"INSERT INTO chunks (repo_id, chunk_type, content) VALUES (?, ?, ?)",
+						repoID, chunkType, chunk,
+					)
+					if err != nil {
+						_ = tx.Rollback()
+						errorCount++
+						eventCh <- IngestEvent{Type: "error", Repo: fullName, Reason: err.Error()}
+						fileTreeSuccess = false
+						break
+					}
+				}
+				if !fileTreeSuccess {
 					continue
 				}
 			}

@@ -12,6 +12,12 @@ import (
 
 	"github.com/hackastak/repog/internal/config"
 	"github.com/hackastak/repog/internal/db"
+	"github.com/hackastak/repog/internal/provider"
+	_ "github.com/hackastak/repog/internal/provider/gemini"
+	_ "github.com/hackastak/repog/internal/provider/ollama"
+	_ "github.com/hackastak/repog/internal/provider/openai"
+	_ "github.com/hackastak/repog/internal/provider/openrouter"
+	_ "github.com/hackastak/repog/internal/provider/voyageai"
 	"github.com/hackastak/repog/internal/sync"
 )
 
@@ -41,10 +47,10 @@ func runSync(cmd *cobra.Command, args []string) error {
 	yellow := color.New(color.FgYellow).SprintFunc()
 	red := color.New(color.FgRed).SprintFunc()
 
-	// Require at least one of --owned or --starred
+	// Default to both if no flags specified
 	if !syncOwned && !syncStarred {
-		fmt.Fprintln(os.Stderr, red("Error: Specify --owned, --starred, or both."))
-		os.Exit(1)
+		syncOwned = true
+		syncStarred = true
 	}
 
 	// Load config
@@ -61,12 +67,31 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 
 	// Open database
-	database, err := db.Open(cfg.DBPath)
+	database, err := db.Open(cfg.DBPath, cfg.Embedding.Dimensions)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, red("Database error:"), err)
 		os.Exit(1)
 	}
 	defer func() { _ = database.Close() }()
+
+	// Calculate chunk size based on embedding provider's token limit
+	embeddingAPIKey, err := config.GetAPIKeyForProvider(cfg.Embedding.Provider)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, red("Failed to get embedding API key:"), err)
+		os.Exit(1)
+	}
+
+	embedProvider, err := provider.NewEmbeddingProvider(cfg.Embedding, embeddingAPIKey)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, red("Failed to create embedding provider:"), err)
+		os.Exit(1)
+	}
+
+	maxChunkSize := sync.CalculateMaxCharsFromTokens(embedProvider.MaxTokens())
+
+	if syncVerbose {
+		fmt.Printf("Using chunk size: %d characters (based on %d token limit)\n", maxChunkSize, embedProvider.MaxTokens())
+	}
 
 	// Start ingestion
 	var s *spinner.Spinner
@@ -82,6 +107,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		IncludeOwned:   syncOwned,
 		IncludeStarred: syncStarred,
 		FullTree:       syncFullTree,
+		MaxChunkSize:   maxChunkSize,
 		DB:             database,
 		GitHubPAT:      githubPAT,
 	})

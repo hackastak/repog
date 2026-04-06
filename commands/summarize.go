@@ -11,6 +11,8 @@ import (
 
 	"github.com/hackastak/repog/internal/config"
 	"github.com/hackastak/repog/internal/db"
+	"github.com/hackastak/repog/internal/provider"
+	_ "github.com/hackastak/repog/internal/provider/gemini"
 	"github.com/hackastak/repog/internal/summarize"
 )
 
@@ -44,14 +46,21 @@ func runSummarize(cmd *cobra.Command, args []string) error {
 		os.Exit(1)
 	}
 
-	geminiKey, err := config.GetGeminiAPIKey()
+	// Create LLM provider
+	genKey, err := config.GetAPIKeyForProvider(cfg.Generation.Provider)
 	if err != nil {
-		fmt.Println(red("Run `repog init` first."))
+		fmt.Println(red("Failed to get generation API key:"), err)
+		os.Exit(1)
+	}
+
+	llmProvider, err := provider.NewLLMProvider(cfg.Generation, genKey)
+	if err != nil {
+		fmt.Println(red("Failed to create LLM provider:"), err)
 		os.Exit(1)
 	}
 
 	// Open database
-	database, err := db.Open(cfg.DBPath)
+	database, err := db.Open(cfg.DBPath, cfg.Embedding.Dimensions)
 	if err != nil {
 		fmt.Println(red("Database error:"), err)
 		os.Exit(1)
@@ -93,9 +102,9 @@ func runSummarize(cmd *cobra.Command, args []string) error {
 
 	// Stream summary
 	result, err := summarize.SummarizeRepo(context.Background(), summarize.SummarizeOptions{
-		Repo:   repo,
-		DB:     database,
-		APIKey: geminiKey,
+		Repo:        repo,
+		DB:          database,
+		LLMProvider: llmProvider,
 	}, func(chunk string) {
 		fmt.Print(chunk)
 	})

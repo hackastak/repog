@@ -10,17 +10,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hackastak/repog/internal/gemini"
+	"github.com/hackastak/repog/internal/provider"
 	"github.com/hackastak/repog/internal/search"
 )
 
 // RecommendOptions configures the recommendation query.
 type RecommendOptions struct {
-	Query   string
-	Limit   int
-	Filters search.SearchFilters
-	DB      *sql.DB
-	APIKey  string
+	Query             string
+	Limit             int
+	Filters           search.SearchFilters
+	DB                *sql.DB
+	EmbeddingProvider provider.EmbeddingProvider
+	LLMProvider       provider.LLMProvider
 }
 
 // Recommendation represents a single repository recommendation.
@@ -45,7 +46,7 @@ const systemPrompt = `You are a developer tool assistant. Your job is to recomme
 
 // buildRecommendPrompt builds the user prompt for recommendations.
 func buildRecommendPrompt(query string, candidates []search.SearchResult, limit int) string {
-	var candidateLines []string
+	candidateLines := make([]string, 0, len(candidates))
 	for _, c := range candidates {
 		description := c.Description
 		if description == "" {
@@ -174,7 +175,7 @@ func RecommendRepos(ctx context.Context, opts RecommendOptions) (RecommendResult
 	candidateLimit := limit * 5
 	opts.Filters.Limit = candidateLimit
 
-	searchResult, err := search.SearchRepos(ctx, opts.DB, opts.APIKey, opts.Query, opts.Filters)
+	searchResult, err := search.SearchRepos(ctx, opts.DB, opts.EmbeddingProvider, opts.Query, opts.Filters)
 	if err != nil {
 		result.DurationMs = time.Since(start).Milliseconds()
 		return result, err
@@ -191,7 +192,7 @@ func RecommendRepos(ctx context.Context, opts RecommendOptions) (RecommendResult
 	prompt := buildRecommendPrompt(opts.Query, searchResult.Results, limit)
 
 	// Call LLM (using non-streaming to avoid truncation issues)
-	llmResult, llmErr := gemini.CallLLM(ctx, opts.APIKey, gemini.LLMRequest{
+	llmResult, llmErr := opts.LLMProvider.Call(ctx, provider.LLMRequest{
 		Prompt:       prompt,
 		SystemPrompt: systemPrompt,
 		MaxTokens:    2048,
@@ -200,7 +201,7 @@ func RecommendRepos(ctx context.Context, opts RecommendOptions) (RecommendResult
 	result.DurationMs = time.Since(start).Milliseconds()
 
 	if llmErr != nil {
-		return result, fmt.Errorf("%s", llmErr.Error)
+		return result, fmt.Errorf("%s", llmErr.Message)
 	}
 
 	result.InputTokens = llmResult.InputTokens

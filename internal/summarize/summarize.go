@@ -8,14 +8,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hackastak/repog/internal/gemini"
+	"github.com/hackastak/repog/internal/provider"
 )
 
 // SummarizeOptions configures the summarization.
 type SummarizeOptions struct {
-	Repo   string // full_name, required
-	DB     *sql.DB
-	APIKey string
+	Repo        string // full_name, required
+	DB          *sql.DB
+	LLMProvider provider.LLMProvider
 }
 
 // SummarizeResult contains the summarization result.
@@ -46,7 +46,7 @@ type chunkRecord struct {
 
 // buildSummarizePrompt builds the summarization prompt.
 func buildSummarizePrompt(repo string, chunks []chunkRecord) string {
-	var contextParts []string
+	contextParts := make([]string, 0, len(chunks))
 	for _, chunk := range chunks {
 		contextParts = append(contextParts, fmt.Sprintf("--- %s ---\n%s", chunk.ChunkType, chunk.Content))
 	}
@@ -108,7 +108,7 @@ func SummarizeRepo(ctx context.Context, opts SummarizeOptions, onChunk func(stri
 	prompt := buildSummarizePrompt(opts.Repo, chunks)
 
 	// Stream LLM response
-	llmResult, llmErr := gemini.StreamLLM(ctx, opts.APIKey, gemini.LLMRequest{
+	llmResult, llmErr := opts.LLMProvider.Stream(ctx, provider.LLMRequest{
 		Prompt:       prompt,
 		SystemPrompt: systemPrompt,
 	}, onChunk)
@@ -116,7 +116,7 @@ func SummarizeRepo(ctx context.Context, opts SummarizeOptions, onChunk func(stri
 	result.DurationMs = time.Since(start).Milliseconds()
 
 	if llmErr != nil {
-		result.Summary = fmt.Sprintf("Error generating summary: %s", llmErr.Error)
+		result.Summary = fmt.Sprintf("Error generating summary: %s", llmErr.Message)
 		return result, nil
 	}
 

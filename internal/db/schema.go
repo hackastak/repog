@@ -1,6 +1,8 @@
 // Package db handles database operations including schema management and migrations.
 package db
 
+import "fmt"
+
 // Schema SQL statements
 
 const CreateReposTable = `
@@ -49,11 +51,21 @@ CREATE TABLE IF NOT EXISTS sync_state (
     UNIQUE(repo_id)
 )`
 
-const CreateChunkEmbeddingsTable = `
+// CreateMetaTable creates the metadata table for storing configuration
+const CreateMetaTable = `
+CREATE TABLE IF NOT EXISTS repog_meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+)`
+
+// CreateChunkEmbeddingsTableSQL generates the embeddings table with dynamic dimensions
+func CreateChunkEmbeddingsTableSQL(dimensions int) string {
+	return fmt.Sprintf(`
 CREATE VIRTUAL TABLE IF NOT EXISTS chunk_embeddings USING vec0(
     chunk_id  INTEGER PRIMARY KEY,
-    embedding FLOAT[768]
-)`
+    embedding FLOAT[%d]
+)`, dimensions)
+}
 
 // Index definitions
 const CreateIndexReposFullName = `CREATE INDEX IF NOT EXISTS idx_repos_full_name ON repos(full_name)`

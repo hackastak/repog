@@ -25,7 +25,14 @@ jobs:
       - name: Build
         run: go build ./...
       - name: Test
-        run: go test -race -coverprofile=coverage.out $(go list ./... | grep -v 'cmd/repog$' | grep -v 'commands$')
+        run: |
+          # Test all packages with -race, but only collect coverage from packages with tests
+          # This avoids the covdata error on macOS for packages without test files
+          go test -race ./...
+          # Collect coverage separately from packages with tests only
+          go test -coverprofile=coverage.out ./internal/ask ./internal/config ./internal/db ./internal/embed \
+            ./internal/format ./internal/gemini ./internal/github ./internal/provider \
+            ./internal/recommend ./internal/search ./internal/summarize ./internal/sync
       - name: Coverage check
         run: |
           go tool cover -func=coverage.out | grep total | \

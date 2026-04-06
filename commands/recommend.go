@@ -12,6 +12,8 @@ import (
 
 	"github.com/hackastak/repog/internal/config"
 	"github.com/hackastak/repog/internal/db"
+	"github.com/hackastak/repog/internal/provider"
+	_ "github.com/hackastak/repog/internal/provider/gemini"
 	"github.com/hackastak/repog/internal/recommend"
 	"github.com/hackastak/repog/internal/search"
 )
@@ -57,14 +59,34 @@ func runRecommend(cmd *cobra.Command, args []string) error {
 		os.Exit(1)
 	}
 
-	geminiKey, err := config.GetGeminiAPIKey()
+	// Create embedding provider
+	embedKey, err := config.GetAPIKeyForProvider(cfg.Embedding.Provider)
 	if err != nil {
-		fmt.Println(red("Run `repog init` first."))
+		fmt.Println(red("Failed to get embedding API key:"), err)
+		os.Exit(1)
+	}
+
+	embedProvider, err := provider.NewEmbeddingProvider(cfg.Embedding, embedKey)
+	if err != nil {
+		fmt.Println(red("Failed to create embedding provider:"), err)
+		os.Exit(1)
+	}
+
+	// Create LLM provider
+	genKey, err := config.GetAPIKeyForProvider(cfg.Generation.Provider)
+	if err != nil {
+		fmt.Println(red("Failed to get generation API key:"), err)
+		os.Exit(1)
+	}
+
+	llmProvider, err := provider.NewLLMProvider(cfg.Generation, genKey)
+	if err != nil {
+		fmt.Println(red("Failed to create LLM provider:"), err)
 		os.Exit(1)
 	}
 
 	// Open database
-	database, err := db.Open(cfg.DBPath)
+	database, err := db.Open(cfg.DBPath, cfg.Embedding.Dimensions)
 	if err != nil {
 		fmt.Println(red("Database error:"), err)
 		os.Exit(1)
@@ -103,11 +125,12 @@ func runRecommend(cmd *cobra.Command, args []string) error {
 	s.Start()
 
 	result, err := recommend.RecommendRepos(context.Background(), recommend.RecommendOptions{
-		Query:   query,
-		Limit:   recommendLimit,
-		Filters: filters,
-		DB:      database,
-		APIKey:  geminiKey,
+		Query:             query,
+		Limit:             recommendLimit,
+		Filters:           filters,
+		DB:                database,
+		EmbeddingProvider: embedProvider,
+		LLMProvider:       llmProvider,
 	})
 	s.Stop()
 

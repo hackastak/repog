@@ -17,34 +17,6 @@ builds:
       - -trimpath
     ldflags:
       - -s -w -X main.version={{.Version}}
-    skip: '{{ ne .Runtime.Goos "darwin" }}'
-
-  - id: repog-linux-amd64
-    main: ./cmd/repog
-    binary: repog
-    env:
-      - CGO_ENABLED=1
-    goos: [linux]
-    goarch: [amd64]
-    flags:
-      - -trimpath
-    ldflags:
-      - -s -w -X main.version={{.Version}}
-    skip: '{{ ne .Runtime.Goos "linux" }}'
-
-  - id: repog-linux-arm64
-    main: ./cmd/repog
-    binary: repog
-    env:
-      - CGO_ENABLED=1
-      - CC=aarch64-linux-gnu-gcc
-    goos: [linux]
-    goarch: [arm64]
-    flags:
-      - -trimpath
-    ldflags:
-      - -s -w -X main.version={{.Version}}
-    skip: '{{ ne .Runtime.Goos "linux" }}'
 
 archives:
   - formats: [tar.gz]

@@ -35,7 +35,11 @@ const CreateChunksTable = `
 CREATE TABLE IF NOT EXISTS chunks (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     repo_id     INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
-    chunk_type  TEXT NOT NULL CHECK(chunk_type IN ('metadata', 'readme', 'file_tree')),
+    chunk_type  TEXT NOT NULL CHECK(
+        chunk_type IN ('metadata', 'readme', 'file_tree')
+        OR chunk_type LIKE 'readme_part_%'
+        OR chunk_type LIKE 'file_tree_part_%'
+    ),
     content     TEXT NOT NULL,
     created_at  TEXT DEFAULT (datetime('now')),
     UNIQUE(repo_id, chunk_type)

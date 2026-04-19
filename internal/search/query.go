@@ -11,6 +11,21 @@ import (
 	"github.com/hackastak/repog/internal/provider"
 )
 
+// chunkTypeOrder returns a sort order for chunk types.
+// metadata=0, readme/readme_part_*=1, file_tree/file_tree_part_*=2, unknown=3
+func chunkTypeOrder(chunkType string) int {
+	if chunkType == "metadata" {
+		return 0
+	}
+	if chunkType == "readme" || strings.HasPrefix(chunkType, "readme_part_") {
+		return 1
+	}
+	if chunkType == "file_tree" || strings.HasPrefix(chunkType, "file_tree_part_") {
+		return 2
+	}
+	return 3
+}
+
 // SearchFilters contains optional filters for search queries.
 type SearchFilters struct {
 	Language *string
@@ -192,11 +207,10 @@ func SearchRepos(ctx context.Context, db *sql.DB, embedProvider provider.Embeddi
 		repos = repos[:limit]
 	}
 	for _, repo := range repos {
-		// Sort chunks within repo: metadata first, then readme, then file_tree
+		// Sort chunks within repo: metadata first, then readme/readme_part_*, then file_tree/file_tree_part_*
 		chunks := repoChunks[repo]
 		sort.Slice(chunks, func(i, j int) bool {
-			order := map[string]int{"metadata": 0, "readme": 1, "file_tree": 2}
-			return order[chunks[i].ChunkType] < order[chunks[j].ChunkType]
+			return chunkTypeOrder(chunks[i].ChunkType) < chunkTypeOrder(chunks[j].ChunkType)
 		})
 		result.Results = append(result.Results, chunks...)
 	}

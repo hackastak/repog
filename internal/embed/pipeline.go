@@ -96,7 +96,7 @@ func RunEmbedPipeline(ctx context.Context, opts EmbedOptions) <-chan EmbedEvent 
 			// Build chunk type filter
 			chunkTypeFilter := ""
 			if !opts.IncludeFileTree {
-				chunkTypeFilter = " AND chunk_type != 'file_tree'"
+				chunkTypeFilter = " AND chunk_type NOT LIKE 'file_tree%'"
 			}
 
 			// Check if there are any chunks without embeddings
@@ -141,7 +141,7 @@ func RunEmbedPipeline(ctx context.Context, opts EmbedOptions) <-chan EmbedEvent 
 		for _, repo := range reposToProcess {
 			chunkTypeFilter := ""
 			if !opts.IncludeFileTree {
-				chunkTypeFilter = " AND chunk_type != 'file_tree'"
+				chunkTypeFilter = " AND chunk_type NOT LIKE 'file_tree%'"
 			}
 
 			// Only get chunks that don't have embeddings yet

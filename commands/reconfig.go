@@ -14,6 +14,7 @@ import (
 
 	"github.com/hackastak/repog/internal/config"
 	"github.com/hackastak/repog/internal/db"
+	"github.com/hackastak/repog/internal/github"
 	"github.com/hackastak/repog/internal/provider"
 	_ "github.com/hackastak/repog/internal/provider/anthropic"
 	_ "github.com/hackastak/repog/internal/provider/gemini"
@@ -25,20 +26,27 @@ import (
 )
 
 var reconfigCmd = &cobra.Command{
-	Use:   "reconfig [embedding|generation]",
+	Use:   "reconfig [github|embedding|generation]",
 	Short: "Reconfigure RepoG settings",
-	Long:  "Reconfigure embedding provider, generation provider, or both. Use without arguments to reconfigure all settings.",
-	RunE:  runReconfig,
+	Long: `Reconfigure RepoG settings. Use without arguments to reconfigure all settings.
+
+Examples:
+  repog reconfig           # Reconfigure all settings
+  repog reconfig github    # Update GitHub Personal Access Token only
+  repog reconfig embedding # Reconfigure embedding provider
+  repog reconfig generation # Reconfigure generation provider`,
+	RunE: runReconfig,
 }
 
 var (
-	reconfigProvider   string
-	reconfigModel      string
-	reconfigDimensions int
-	reconfigMaxTokens  int
-	reconfigBaseURL    string
-	reconfigFallback   string
-	reconfigAPIKey     string
+	reconfigProvider    string
+	reconfigModel       string
+	reconfigDimensions  int
+	reconfigMaxTokens   int
+	reconfigBaseURL     string
+	reconfigFallback    string
+	reconfigAPIKey      string
+	reconfigGitHubToken string
 )
 
 func init() {
@@ -49,6 +57,7 @@ func init() {
 	reconfigCmd.Flags().StringVar(&reconfigBaseURL, "base-url", "", "Custom base URL (ollama only)")
 	reconfigCmd.Flags().StringVar(&reconfigFallback, "fallback", "", "Fallback model (generation only)")
 	reconfigCmd.Flags().StringVar(&reconfigAPIKey, "api-key", "", "API key for the provider")
+	reconfigCmd.Flags().StringVar(&reconfigGitHubToken, "github-token", "", "GitHub Personal Access Token (for github reconfiguration)")
 }
 
 func runReconfig(cmd *cobra.Command, args []string) error {
@@ -70,7 +79,7 @@ func runReconfig(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 
 	// Determine what to reconfigure
-	var reconfigureEmbedding, reconfigureGeneration bool
+	var reconfigureEmbedding, reconfigureGeneration, reconfigureGitHub bool
 
 	if len(args) == 0 {
 		// No arguments - reconfigure everything
@@ -80,15 +89,22 @@ func runReconfig(cmd *cobra.Command, args []string) error {
 		fmt.Println()
 	} else {
 		switch args[0] {
+		case "github":
+			reconfigureGitHub = true
 		case "embedding":
 			reconfigureEmbedding = true
 		case "generation":
 			reconfigureGeneration = true
 		default:
 			fmt.Fprintln(os.Stderr, red("Unknown target:", args[0]))
-			fmt.Fprintln(os.Stderr, "Usage: repog reconfig [embedding|generation]")
+			fmt.Fprintln(os.Stderr, "Usage: repog reconfig [github|embedding|generation]")
 			os.Exit(1)
 		}
+	}
+
+	// Handle GitHub PAT reconfiguration separately (doesn't need full config)
+	if reconfigureGitHub {
+		return runReconfigGitHub(reconfigGitHubToken, green, red, dim, bold)
 	}
 
 	// Store original embedding config to detect changes
@@ -269,6 +285,74 @@ func runReconfig(cmd *cobra.Command, args []string) error {
 	if reconfigureGeneration {
 		fmt.Println("Generation:", cfg.Generation.Provider, fmt.Sprintf("(%s)", cfg.Generation.Model))
 	}
+	fmt.Println()
+
+	return nil
+}
+
+// runReconfigGitHub handles GitHub PAT reconfiguration
+func runReconfigGitHub(tokenFlag string, green, red, dim, bold func(...interface{}) string) error {
+	fmt.Println(bold("GitHub Token Update"))
+	fmt.Println()
+
+	// Get current PAT info if available
+	currentPAT, err := config.GetGitHubPAT()
+	if err == nil && currentPAT != "" {
+		fmt.Println(dim("Current token: " + maskSecret(currentPAT)))
+		fmt.Println()
+	}
+
+	// Get new token
+	githubToken := tokenFlag
+	if githubToken == "" {
+		fmt.Println(dim("Create a new token at: https://github.com/settings/personal-access-tokens/new"))
+		fmt.Println()
+		fmt.Println(dim("Required settings:"))
+		fmt.Println(dim("  Resource owner:     Your GitHub account"))
+		fmt.Println(dim("  Repository access:  All repositories (or select specific repos)"))
+		fmt.Println(dim("  Permissions:"))
+		fmt.Println(dim("    Contents:         Read-only"))
+		fmt.Println(dim("    Metadata:         Read-only"))
+		fmt.Println()
+
+		prompt := &survey.Password{
+			Message: "New GitHub Personal Access Token:",
+		}
+		if err := survey.AskOne(prompt, &githubToken, survey.WithValidator(survey.Required)); err != nil {
+			fmt.Println(red("✗"), "Failed to read input:", err)
+			os.Exit(1)
+		}
+	}
+
+	// Validate the new token
+	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
+	s.Suffix = " Validating GitHub token..."
+	s.Start()
+
+	client := github.NewClient(githubToken)
+	patResult := github.ValidatePAT(context.Background(), client)
+	s.Stop()
+
+	if !patResult.Valid {
+		fmt.Println(red("✗"), "GitHub token invalid:", patResult.Error)
+		os.Exit(1)
+	}
+
+	fmt.Println(green("✓"), "Token validated - logged in as @"+patResult.Login)
+
+	// Save the new token
+	s = spinner.New(spinner.CharSets[14], 100*time.Millisecond)
+	s.Suffix = " Saving token..."
+	s.Start()
+
+	if err := config.SetAPIKeyForProvider("github", githubToken); err != nil {
+		s.Stop()
+		fmt.Println(red("✗"), "Failed to save token:", err)
+		os.Exit(1)
+	}
+
+	s.Stop()
+	fmt.Println(green("✓"), "GitHub token updated")
 	fmt.Println()
 
 	return nil

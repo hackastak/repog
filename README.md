@@ -12,9 +12,9 @@ RepoG is a CLI tool that syncs your GitHub repositories to a local knowledge bas
 
 **Key Features:**
 - Sync owned and starred repositories to a local SQLite database
-- Generate vector embeddings using Google Gemini
+- Generate vector embeddings with multiple providers (Gemini, OpenAI, Voyage AI, Ollama)
 - Semantic search across all your code using natural language
-- Ask questions and get AI-synthesized answers (RAG)
+- Ask questions and get AI-synthesized answers (RAG) with multiple LLM providers
 - Get repository recommendations for specific tasks
 - Summarize repositories with AI
 
@@ -42,7 +42,7 @@ go install github.com/hackastak/repog/cmd/repog@latest
 
 ### 1. Get Your API Keys
 
-You'll need two API keys:
+You'll need a GitHub token and an API key for your chosen AI provider:
 
 **GitHub Personal Access Token (PAT)**
 1. Go to [GitHub Settings > Developer settings > Personal access tokens > Fine-grained tokens](https://github.com/settings/tokens?type=beta)
@@ -50,9 +50,13 @@ You'll need two API keys:
    - **Repository access**: All repositories (or select specific ones)
    - **Permissions**: `Contents: Read-only`, `Metadata: Read-only`
 
-**Google Gemini API Key**
-1. Go to [Google AI Studio](https://aistudio.google.com/apikey)
-2. Create a new API key
+**AI Provider API Key** (choose one or more)
+- [Google Gemini](https://aistudio.google.com/apikey) - Embeddings and LLM
+- [OpenAI](https://platform.openai.com/api-keys) - Embeddings and LLM
+- [Anthropic](https://console.anthropic.com) - LLM only
+- [Voyage AI](https://dash.voyageai.com) - Embeddings only
+- [OpenRouter](https://openrouter.ai/keys) - Access to 100+ models
+- [Ollama](https://ollama.ai) - Local models (no API key needed)
 
 ### 2. Initialize RepoG
 
@@ -95,6 +99,7 @@ repog recommend "building a CLI tool"
 | `repog ask <question>` | Ask questions with AI-synthesized answers |
 | `repog recommend <task>` | Get repository recommendations |
 | `repog summarize <repo>` | AI summary of a specific repository |
+| `repog reconfig` | Update API keys or switch providers |
 | `repog status` | View knowledge base statistics |
 
 ### Sync Options
@@ -121,9 +126,8 @@ RepoG respects GitHub's rate limit of 5,000 requests per hour for authenticated 
 
 RepoG is under active development. Here's what's coming next:
 
-- **Enhanced embeddings** - Support for multiple embedding providers (OpenAI, local models)
 - **Performance** - Incremental syncing and re-ranking
-- **TUI** - Improve usability by building RepoG terminal user interface using Bubbletea 
+- **TUI** - Improve usability by building RepoG terminal user interface using Bubbletea
 - **Export capabilities** - Generate documentation and knowledge graphs from your repos
 - **Code analysis** - Dependency graphs, language statistics, and complexity metrics
 - **Multi-platform Git support** - GitLab, Bitbucket, and self-hosted Git servers
@@ -159,4 +163,4 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-Built with [sqlite-vec](https://github.com/asg017/sqlite-vec) and [Google Gemini](https://ai.google.dev/).
+Built with [sqlite-vec](https://github.com/asg017/sqlite-vec). Supports [Gemini](https://ai.google.dev/), [OpenAI](https://openai.com/), [Anthropic](https://anthropic.com/), [Voyage AI](https://voyageai.com/), [OpenRouter](https://openrouter.ai/), and [Ollama](https://ollama.ai/).

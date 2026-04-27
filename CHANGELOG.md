@@ -5,6 +5,37 @@ All notable changes to RepoG will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.4] - 2026-04-27
+
+### Fixed
+
+- Fixed bug where "Use the same API key for generation?" prompt was using the previously saved key from keyring instead of the just-entered embedding key
+- Fixed same issue in `reconfig` command when switching both providers to the same new provider
+
+### Changed
+
+- `repog init` now directs existing users to `reconfig` command instead of duplicating reconfiguration logic
+- "Use the same API key?" prompt now only appears when embedding and generation providers match
+
+## [0.2.3] - 2026-04-19
+
+### Fixed
+
+- Fixed handling of partitioned chunks during embedding
+- Added GitHub token rotation support for long-running sync operations
+
+## [0.2.2] - 2026-04-06
+
+### Fixed
+
+- Fixed version display in `repog --version` by injecting version via ldflags
+
+## [0.2.1] - 2026-04-06
+
+### Fixed
+
+- Configured releases for macOS-only Homebrew distribution
+
 ## [0.2.0] - 2026-04-01
 
 Major release introducing multi-provider support for embeddings and LLM generation.
@@ -74,5 +105,9 @@ Initial public release of RepoG, rewritten in Go.
   - CI pipeline with test coverage requirements
   - GoReleaser for automated releases
 
+[0.2.4]: https://github.com/hackastak/repog/releases/tag/v0.2.4
+[0.2.3]: https://github.com/hackastak/repog/releases/tag/v0.2.3
+[0.2.2]: https://github.com/hackastak/repog/releases/tag/v0.2.2
+[0.2.1]: https://github.com/hackastak/repog/releases/tag/v0.2.1
 [0.2.0]: https://github.com/hackastak/repog/releases/tag/v0.2.0
 [0.1.0]: https://github.com/hackastak/repog/releases/tag/v0.1.0

@@ -221,7 +221,8 @@ func selectEmbeddingProvider(providerFlag, apiKeyFlag string, red, dim, green fu
 }
 
 // selectGenerationProvider guides the user through generation provider configuration
-func selectGenerationProvider(providerFlag, apiKeyFlag string, red, dim, green func(...interface{}) string) (config.ProviderConfig, string) {
+// embedProvider and embedAPIKey are passed so we can offer to reuse the same key if providers match
+func selectGenerationProvider(providerFlag, apiKeyFlag, embedProvider, embedAPIKey string, red, dim, green func(...interface{}) string) (config.ProviderConfig, string) {
 	var selectedProvider string
 	var apiKey string
 
@@ -243,27 +244,27 @@ func selectGenerationProvider(providerFlag, apiKeyFlag string, red, dim, green f
 		}
 	}
 
-	// Get API key (skip for Ollama, reuse if same provider as embedding)
+	// Get API key (skip for Ollama, reuse embedding key if same provider)
 	if selectedProvider == "ollama" {
 		apiKey = "" // Ollama doesn't need an API key
 	} else if apiKeyFlag != "" {
 		apiKey = apiKeyFlag
 	} else {
-		fmt.Println()
-		reuseKey := false
-		prompt := &survey.Confirm{
-			Message: "Use the same API key for generation?",
-			Default: true,
-		}
-		if err := survey.AskOne(prompt, &reuseKey); err == nil && reuseKey {
-			// Try to get existing key from keyring
-			existingKey, err := config.GetAPIKeyForProvider(selectedProvider)
-			if err == nil && existingKey != "" {
-				apiKey = existingKey
+		// Only offer to reuse embedding key if providers match
+		if selectedProvider == embedProvider && embedAPIKey != "" {
+			fmt.Println()
+			reuseKey := false
+			prompt := &survey.Confirm{
+				Message: "Use the same API key for generation?",
+				Default: true,
+			}
+			if err := survey.AskOne(prompt, &reuseKey); err == nil && reuseKey {
+				apiKey = embedAPIKey
 			}
 		}
 
 		if apiKey == "" {
+			fmt.Println()
 			switch selectedProvider {
 			case "gemini":
 				fmt.Println(dim("Get a Gemini API key at: https://aistudio.google.com/apikey"))
@@ -376,21 +377,14 @@ func runInit(cmd *cobra.Command, args []string) error {
 			fmt.Println("  Database:", cfg.DBPath)
 		}
 		fmt.Println()
-
-		var overwrite bool
-		prompt := &survey.Confirm{
-			Message: "Do you want to reconfigure?",
-			Default: false,
-		}
-		if err := survey.AskOne(prompt, &overwrite); err != nil {
-			fmt.Println(dim("Setup cancelled."))
-			return nil
-		}
-
-		if !overwrite {
-			fmt.Println(dim("Setup cancelled."))
-			return nil
-		}
+		fmt.Println("To update your configuration, use:")
+		fmt.Println("  ", cyan("repog reconfig"), "          - Reconfigure all settings")
+		fmt.Println("  ", cyan("repog reconfig github"), "   - Update GitHub PAT only")
+		fmt.Println("  ", cyan("repog reconfig embedding"), "- Update embedding provider")
+		fmt.Println("  ", cyan("repog reconfig generation"), "- Update generation provider")
+		fmt.Println()
+		fmt.Println(dim("Use --force to reinitialize from scratch."))
+		return nil
 	}
 
 	// Get GitHub token
@@ -435,7 +429,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	// Provider selection and configuration
 	embedCfg, embedAPIKey := selectEmbeddingProvider(initEmbedProvider, initEmbedAPIKey, red, dim, green)
-	genCfg, genAPIKey := selectGenerationProvider(initGenProvider, initGenAPIKey, red, dim, green)
+	genCfg, genAPIKey := selectGenerationProvider(initGenProvider, initGenAPIKey, embedCfg.Provider, embedAPIKey, red, dim, green)
 
 	// Get database path
 	dbPath := initDBPath

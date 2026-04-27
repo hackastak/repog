@@ -110,9 +110,15 @@ func runReconfig(cmd *cobra.Command, args []string) error {
 	// Store original embedding config to detect changes
 	originalEmbedding := cfg.Embedding
 
+	// Track embedding provider and API key for potential reuse in generation config
+	var currentEmbedProvider string
+	var currentEmbedAPIKey string
+
 	// Reconfigure embedding
 	if reconfigureEmbedding {
 		newEmbedCfg, newEmbedAPIKey := reconfigureEmbeddingProvider(cfg.Embedding, reconfigProvider, reconfigModel, reconfigDimensions, reconfigMaxTokens, reconfigBaseURL, reconfigAPIKey, red, dim, green, yellow)
+		currentEmbedProvider = newEmbedCfg.Provider
+		currentEmbedAPIKey = newEmbedAPIKey
 
 		// Calculate chunk sizes to detect if they changed
 		var oldChunkSize, newChunkSize int
@@ -236,7 +242,12 @@ func runReconfig(cmd *cobra.Command, args []string) error {
 
 	// Reconfigure generation
 	if reconfigureGeneration {
-		newGenCfg, newGenAPIKey := reconfigureGenerationProvider(cfg.Generation, reconfigProvider, reconfigModel, reconfigFallback, reconfigBaseURL, reconfigAPIKey, red, dim, green)
+		// If embedding wasn't reconfigured, get current embedding info from config
+		if currentEmbedProvider == "" {
+			currentEmbedProvider = cfg.Embedding.Provider
+			currentEmbedAPIKey, _ = config.GetAPIKeyForProvider(cfg.Embedding.Provider)
+		}
+		newGenCfg, newGenAPIKey := reconfigureGenerationProvider(cfg.Generation, reconfigProvider, reconfigModel, reconfigFallback, reconfigBaseURL, reconfigAPIKey, currentEmbedProvider, currentEmbedAPIKey, red, dim, green)
 
 		// Update config
 		cfg.Generation = newGenCfg
@@ -629,7 +640,8 @@ func reconfigureEmbeddingProvider(current config.ProviderConfig, providerFlag, m
 }
 
 // reconfigureGenerationProvider handles generation provider reconfiguration
-func reconfigureGenerationProvider(current config.ProviderConfig, providerFlag, modelFlag, fallbackFlag, baseURLFlag, apiKeyFlag string, red, dim, green func(...interface{}) string) (config.ProviderConfig, string) {
+// embedProvider and embedAPIKey are passed so we can offer to reuse the same key if providers match
+func reconfigureGenerationProvider(current config.ProviderConfig, providerFlag, modelFlag, fallbackFlag, baseURLFlag, apiKeyFlag, embedProvider, embedAPIKey string, red, dim, green func(...interface{}) string) (config.ProviderConfig, string) {
 	var selectedProvider string
 	var apiKey string
 	var model string
@@ -745,17 +757,32 @@ func reconfigureGenerationProvider(current config.ProviderConfig, providerFlag, 
 	} else if apiKeyFlag != "" {
 		apiKey = apiKeyFlag
 	} else {
-		// Try to get existing key from keyring
-		existingKey, err := config.GetAPIKeyForProvider(selectedProvider)
-		if err == nil && existingKey != "" {
+		// First, check if we can reuse the embedding key (same provider, just entered)
+		if selectedProvider == embedProvider && embedAPIKey != "" {
 			fmt.Println()
 			var reuseKey bool
 			prompt := &survey.Confirm{
-				Message: fmt.Sprintf("Use existing %s API key?", selectedProvider),
+				Message: "Use the same API key as embedding?",
 				Default: true,
 			}
 			if err := survey.AskOne(prompt, &reuseKey); err == nil && reuseKey {
-				apiKey = existingKey
+				apiKey = embedAPIKey
+			}
+		}
+
+		// If not reusing embedding key, try to get existing key from keyring
+		if apiKey == "" {
+			existingKey, err := config.GetAPIKeyForProvider(selectedProvider)
+			if err == nil && existingKey != "" {
+				fmt.Println()
+				var reuseKey bool
+				prompt := &survey.Confirm{
+					Message: fmt.Sprintf("Use existing %s API key?", selectedProvider),
+					Default: true,
+				}
+				if err := survey.AskOne(prompt, &reuseKey); err == nil && reuseKey {
+					apiKey = existingKey
+				}
 			}
 		}
 
